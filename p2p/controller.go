@@ -33,9 +33,16 @@ var controllerLogger = packageLogger.WithField("subpack", "controller")
 
 // Controller manages the peer to peer network.
 type Controller struct {
-	keepRunning bool // Indicates its time to shut down when false.
+	running bool
 
-	listenPort  string             // port we listen on for new connections
+	listenPort string // port to listen on for new connections
+
+	peerManager *PeerManager
+	Config      *P2PConfiguration
+	In          chan interface{} // incoming messages from the network to the app
+	Out         chan interface{} // outgoing messages to the network
+	stop        chan interface{}
+
 	connections *ConnectionManager // current connections
 
 	// After launching the network, the management is done via these channels.
@@ -159,6 +166,104 @@ func (e *CommandDisconnect) String() string {
 // command channel.
 //////////////////////////////////////////////////////////////////////
 
+// NewController creates a new P2P Network controller with the specified configuration
+func NewController(config P2PConfiguration) *Controller {
+	c := &Controller{}
+	c.logger = controllerLogger.WithFields(log.Fields{
+		"node":    config.NodeName,
+		"port":    config.ListenPort,
+		"network": fmt.Sprintf("%#x", config.Network)})
+	c.Config = &config
+	c.peerManager = NewPeerManager(c)
+
+	// TODO initialize channels
+	c.stop = make(chan interface{}, 1)
+
+	return c
+}
+
+// Start initializes the network by starting the peer manager and listening to incoming connections
+func (c *Controller) Start() {
+	c.logger.Info("Starting the P2P Network")
+
+	go c.peerManager.Start() // this will get peer manager ready to handle incoming connections
+
+	go c.listenLoop()
+	go c.routeLoop()
+}
+
+// Stop shuts down the peer manager and all active connections
+func (c *Controller) Stop() {
+	c.running = false
+	c.stop <- true
+	c.peerManager.Stop()
+}
+
+// listenLoop listens for incoming TCP connections
+// passes them off to peer manager
+func (c *Controller) listenLoop() {
+	c.logger.Debug("Controller.listenLoop() starting up")
+
+	tmpLogger := c.logger.WithFields(log.Fields{"address": c.Config.ListenIP, "port": c.Config.ListenPort})
+
+	addr := fmt.Sprintf("%s:%d", c.Config.ListenIP, c.Config.ListenPort)
+	listener, err := LimitedListen("tcp", addr, c.Config.ListenLimit)
+	if err != nil {
+		tmpLogger.WithError(err).Error("Controller.Start() unable to start limited listener")
+		return
+	}
+	defer listener.Close()
+
+	tmpLogger.Info("Listening for new connections")
+
+	// start permanent loop
+	// terminates on program exit
+	for {
+		// listen for five seconds, then check whether this loop is still running
+		conn, err := listener.Accept()
+		if err != nil {
+			c.logger.WithError(err).Warn("Controller.acceptLoop() error accepting")
+			continue
+		}
+
+		c.peerManager.HandleIncoming(conn)
+	}
+}
+
+// Take messages from Outgoing channel and route it to the peer manager
+func (c *Controller) routeLoop() {
+	c.logger.Debugf("Controller.routeLoop() @@@@@@@@@@ starting up in %d seconds", 2)
+	time.Sleep(time.Second * time.Duration(2)) // Wait a few seconds to let the system come up.
+
+	// terminates via stop channel
+	for {
+		// TODO move this to peer manager
+		//c.connections.UpdatePrometheusMetrics()
+		//p2pControllerNumMetrics.Set(float64(len(c.connectionMetrics)))
+
+		// blocking read on c.Out and c.stop
+		select {
+		case message := <-c.Out:
+			parcel := message.(Parcel)
+			TotalMessagesSent++
+
+			switch parcel.Header.TargetPeer {
+			case FullBroadcastFlag:
+				c.peerManager.Broadcast(parcel, true)
+			case BroadcastFlag:
+				c.peerManager.Broadcast(parcel, true)
+			case RandomPeerFlag:
+				c.peerManager.ToPeer("", parcel)
+			default:
+				c.peerManager.ToPeer(parcel.Header.TargetPeer, parcel)
+			}
+		// stop this loop if anything shows up
+		case _ = <-c.stop:
+			return
+		}
+	}
+}
+
 func (c *Controller) Init(ci ControllerInit) *Controller {
 	c.logger = controllerLogger.WithFields(log.Fields{
 		"node":    ci.NodeName,
@@ -167,7 +272,7 @@ func (c *Controller) Init(ci ControllerInit) *Controller {
 	c.logger.WithField("controller_init", ci).Debugf("Initializing network controller")
 	RandomGenerator = rand.New(rand.NewSource(time.Now().UnixNano()))
 	NodeID = uint64(RandomGenerator.Int63()) // This is a global used by all connections
-	c.keepRunning = true
+	c.running = true
 	c.commandChannel = make(chan interface{}, StandardChannelSize) // Commands from App
 	c.FromNetwork = make(chan interface{}, StandardChannelSize)    // Channel to the app for network data
 	c.ToNetwork = make(chan interface{}, StandardChannelSize)      // Parcels from the app for the network
@@ -398,7 +503,7 @@ func (c *Controller) runloop() {
 	c.logger.Debugf("Controller.runloop() @@@@@@@@@@ starting up in %d seconds", 2)
 	time.Sleep(time.Second * time.Duration(2)) // Wait a few seconds to let the system come up.
 
-	for c.keepRunning { // Run until we get the exit command
+	for c.running { // Run until we get the exit command
 
 		c.connections.UpdatePrometheusMetrics()
 		p2pControllerNumMetrics.Set(float64(len(c.connectionMetrics)))
@@ -654,7 +759,7 @@ func (c *Controller) updateMetrics() {
 func (c *Controller) shutdown() {
 	c.logger.Debug("Controller.shutdown()")
 	c.connections.SendToAll(ConnectionCommand{Command: ConnectionShutdownNow})
-	c.keepRunning = false
+	c.running = false
 }
 
 // Broadcasts the parcel to a number of peers: all special peers and a random selection

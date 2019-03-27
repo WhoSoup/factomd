@@ -25,7 +25,11 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 // via two channels, send and receive.  These channels take structs of type ConnectionCommand or ConnectionParcel
 // (defined below).
 type Connection struct {
-	conn           net.Conn
+	conn net.Conn
+
+	Incoming chan interface{} // messages from the other end
+	Outgoing chan interface{} // messages to the other end
+
 	Errors         chan error              // handle errors from connections.
 	Commands       chan *ConnectionCommand // handle connection commands
 	SendChannel    chan interface{}        // Send means "towards the network" Channel sends Parcels and ConnectionCommands

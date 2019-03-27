@@ -7,6 +7,52 @@ import (
 	"time"
 )
 
+// LimitedListener will block multiple connection attempts from a single ip
+// within a specific timeframe
+type LimitedListener struct {
+	net.Listener
+
+	limit          time.Duration
+	lastConnection time.Time
+	accepted       map[string]time.Time
+}
+
+func LimitedListen(network, address string, limit time.Duration) (net.Listener, error) {
+	l, err := net.Listen(network, address)
+	if err != nil {
+		return nil, err
+	}
+	return LimitedListener{
+		Listener:       l,
+		limit:          limit,
+		lastConnection: time.Time{},
+		accepted:       make(map[string]time.Time),
+	}, nil
+}
+
+func (ll LimitedListener) Accept() (net.Conn, error) {
+	con, err := ll.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
+	addr := strings.Split(con.RemoteAddr().String(), ":")
+	if t, ok := ll.accepted[addr[0]]; ok && time.Since(t) > ll.limit {
+		ll.accepted[addr[0]] = time.Now()
+		con.Close()
+		return nil, fmt.Errorf("connection rate limit exceeded")
+	}
+
+	// if no connection has been made in a while, reset the map
+	if len(ll.accepted) > 16 && time.Since(ll.lastConnection) > ll.limit {
+		ll.accepted = make(map[string]time.Time)
+	}
+
+	ll.lastConnection = time.Now()
+	ll.accepted[addr[0]] = time.Now()
+	return con, nil
+}
+
 // limitListenerSources will limit the number of connections allowed to 1
 // connection per ip per second. Any more than that it will reject.
 // The rate limiting is pretty dumb, when a connection is made, no other
