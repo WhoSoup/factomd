@@ -27,8 +27,14 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
-	Incoming chan interface{} // messages from the other end
-	Outgoing chan interface{} // messages to the other end
+	Incoming      chan interface{} // messages from the other side
+	Outgoing      chan interface{} // messages to the other side
+	Shutdown      chan error       // connection died
+	writeDeadline time.Duration
+	readDeadline  time.Duration
+	encoder       *gob.Encoder // Wire format is gobs in this version, may switch to binary
+	decoder       *gob.Decoder // Wire format is gobs in this version, may switch to binary
+	isRunning     bool
 
 	Errors         chan error              // handle errors from connections.
 	Commands       chan *ConnectionCommand // handle connection commands
@@ -36,8 +42,6 @@ type Connection struct {
 	ReceiveChannel chan interface{}        // Receive means "from the network" Channel receives Parcels and ConnectionCommands
 	ReceiveParcel  chan *Parcel            // Parcels to be handled.
 	// and as "address" for sending messages to specific nodes.
-	encoder         *gob.Encoder      // Wire format is gobs in this version, may switch to binary
-	decoder         *gob.Decoder      // Wire format is gobs in this version, may switch to binary
 	peer            Peer              // the data structure representing the peer we are talking to. defined in peer.go
 	attempts        int               // reconnection attempts
 	TimeLastpacket  time.Time         // Time we last successfully received a packet or command.
@@ -153,6 +157,72 @@ const (
 //
 //////////////////////////////
 
+func NewConnection(conn net.Conn, config *P2PConfiguration) *Connection {
+	c := &Connection{}
+	c.Outgoing = make(chan interface{}, StandardChannelSize)
+	c.Incoming = make(chan interface{}, StandardChannelSize)
+	c.Shutdown = make(chan error, 2) // two goroutines = max 2 errors
+	c.logger = conLogger.WithField("address", conn.RemoteAddr())
+	c.logger.Debug("Connection initialized")
+	c.readDeadline = config.ReadDeadline
+	c.writeDeadline = config.WriteDeadline
+
+	return c
+}
+
+func (c *Connection) Start() {
+	c.logger.Debug("Starting connection")
+	go c.readLoop()
+	go c.sendLoop()
+}
+
+func (c *Connection) readLoop() {
+	for {
+		var message Parcel
+
+		c.conn.SetReadDeadline(time.Now().Add(c.readDeadline))
+		err := c.decoder.Decode(&message)
+
+		if err != nil {
+			c.Shutdown <- err
+			c.logger.WithError(err).Debug("Terminating readLoop because of error")
+			return
+		}
+
+		c.metrics.BytesReceived += message.Header.Length
+		c.metrics.MessagesReceived++
+		c.TimeLastpacket = time.Now()
+		c.Incoming <- &message
+	}
+}
+
+// sendLoop listens to the Incoming channel, pushing all data from there
+// to the tcp connection
+func (c *Connection) sendLoop() {
+	for {
+		msg := <-c.Incoming
+		if parcel, ok := msg.(*Parcel); ok {
+			c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
+			err := c.encoder.Encode(parcel)
+			if err != nil { // no error is recoverable
+				c.Shutdown <- err
+				c.logger.WithError(err).Debug("Terminating sendLoop because of error")
+				return
+			}
+
+			c.metrics.BytesSent += parcel.Header.Length
+			c.metrics.MessagesSent++
+		} else {
+			c.logger.WithField("data", msg).Error("unexpected data arrived in channel")
+		}
+	}
+}
+
+func (c *Connection) Stop() {
+	c.logger.Debug("Stopping connection")
+	c.conn.Close() // this will force both sendLoop and readLoop to stop immediately
+}
+
 // InitWithConn is called from our accept loop when a peer dials into us and we already have a network conn
 func (c *Connection) InitWithConn(conn net.Conn, peer Peer) *Connection {
 	c.conn = conn
@@ -215,7 +285,7 @@ func (c *Connection) commonInit(peer Peer) {
 	c.timeLastStatus = time.Now()
 }
 
-func (c *Connection) Start() {
+func (c *Connection) Start2() {
 	c.logger.Debug("Starting connection")
 	go c.runLoop()
 }

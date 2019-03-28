@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -17,7 +18,34 @@ var peerLogger = packageLogger.WithField("subpack", "peer")
 
 // Data structures and functions related to peers (eg other nodes in the network)
 
+type PeerType uint8
+
+const (
+	RegularPeer        PeerType = iota
+	SpecialPeerConfig           // special peer defined in the config file
+	SpecialPeerCmdLine          // special peer defined via the cmd line params
+	PeerIncoming
+	PeerOutgoing
+)
+
+// PeerState is the states for the Peer's state machine
+type PeerState uint8
+
+// The peer state machine's states
+const (
+	Offline PeerState = iota
+	Connecting
+	Online
+)
+
 type Peer struct {
+	conn       *Connection
+	state      PeerState
+	stateMutex sync.RWMutex
+	stop       chan interface{}
+	Outgoing   bool
+	config     *P2PConfiguration
+
 	QualityScore int32     // 0 is neutral quality, negative is a bad peer.
 	Address      string    // Must be in form of x.x.x.x
 	Port         string    // Must be in form of xxxx
@@ -25,7 +53,7 @@ type Peer struct {
 	Hash         string    // This is more of a connection ID than hash right now.
 	Location     uint32    // IP address as an int.
 	Network      NetworkID // The network this peer reference lives on.
-	Type         uint8
+	Type         PeerType
 	Connections  int                  // Number of successful connections.
 	LastContact  time.Time            // Keep track of how long ago we talked to the peer.
 	Source       map[string]time.Time // source where we heard from the peer.
@@ -34,13 +62,53 @@ type Peer struct {
 	logger *log.Entry
 }
 
-const (
-	RegularPeer        uint8 = iota
-	SpecialPeerConfig        // special peer defined in the config file
-	SpecialPeerCmdLine       // special peer defined via the cmd line params
-)
+func NewPeer(config *P2PConfiguration, address string, outgoing bool) *Peer {
+	p := &Peer{Address: address, Outgoing: outgoing, state: Offline}
+	p.logger = peerLogger.WithFields(log.Fields{
+		"hash":     p.Hash,
+		"address":  p.Address,
+		"port":     p.Port,
+		"outgoing": p.Outgoing,
+	})
+	p.config = config
+	p.stop = make(chan interface{}, 1)
+	return p
+}
 
-func (p *Peer) Init(address string, port string, quality int32, peerType uint8, connections int) *Peer {
+func (p *Peer) HandleActiveConnection(con net.Conn) {
+	if p.conn != nil {
+		p.logger.Warn("Terminating existing connection with superceding TCP connection")
+		p.conn.Stop()
+	}
+
+	p.conn = NewConnection(con, p.config)
+	p.conn.Start()
+	p.state = Online
+}
+
+func (p *Peer) Send(parcel Parcel) {
+	// TODO check peer state machine
+	parcel.Header.NodeID = p.config.NodeID
+	BlockFreeChannelSend(p.conn.Outgoing, parcel)
+}
+
+func (p *Peer) IsLive() bool {
+	return p.state != Offline
+}
+
+func (p *Peer) Start() {
+	if p.conn == nil {
+		// create connection, dial?
+	} else {
+		// ??
+	}
+}
+
+func (p *Peer) Stop() {
+
+}
+
+func (p *Peer) Init(address string, port string, quality int32, peerType PeerType, connections int) *Peer {
 
 	p.logger = peerLogger.WithFields(log.Fields{
 		"address":  address,

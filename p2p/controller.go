@@ -14,11 +14,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"reflect"
 	"strings"
 	"time"
 	"unicode"
-
-	"github.com/FactomProject/factomd/common/primitives"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -85,78 +84,6 @@ type ControllerInit struct {
 	LogLevel                 string           // Logging level
 }
 
-// CommandDialPeer is used to instruct the Controller to dial a peer address
-type CommandDialPeer struct {
-	persistent bool
-	peer       Peer
-}
-
-// CommandAddPeer is used to instruct the Controller to add a connection
-// This connection can come from acceptLoop or some other way.
-type CommandAddPeer struct {
-	conn net.Conn
-}
-
-// CommandShutdown is used to instruct the Controller to takve various actions.
-type CommandShutdown struct {
-	_ uint8
-}
-
-// CommandAdjustPeerQuality is used to instruct the Controller to reduce a connections quality score
-type CommandAdjustPeerQuality struct {
-	PeerHash   string
-	Adjustment int32
-}
-
-func (e *CommandAdjustPeerQuality) JSONByte() ([]byte, error) {
-	return primitives.EncodeJSON(e)
-}
-
-func (e *CommandAdjustPeerQuality) JSONString() (string, error) {
-	return primitives.EncodeJSONString(e)
-}
-
-func (e *CommandAdjustPeerQuality) String() string {
-	str, _ := e.JSONString()
-	return str
-}
-
-// CommandBan is used to instruct the Controller to disconnect and ban a peer
-type CommandBan struct {
-	PeerHash string
-}
-
-func (e *CommandBan) JSONByte() ([]byte, error) {
-	return primitives.EncodeJSON(e)
-}
-
-func (e *CommandBan) JSONString() (string, error) {
-	return primitives.EncodeJSONString(e)
-}
-
-func (e *CommandBan) String() string {
-	str, _ := e.JSONString()
-	return str
-}
-
-// CommandDisconnect is used to instruct the Controller to disconnect from a peer
-type CommandDisconnect struct {
-	PeerHash string
-}
-
-func (e *CommandDisconnect) JSONByte() ([]byte, error) {
-	return primitives.EncodeJSON(e)
-}
-
-func (e *CommandDisconnect) JSONString() (string, error) {
-	return primitives.EncodeJSONString(e)
-}
-
-func (e *CommandDisconnect) String() string {
-	str, _ := e.JSONString()
-	return str
-}
-
 //////////////////////////////////////////////////////////////////////
 // Public (exported) methods.
 //
@@ -177,7 +104,9 @@ func NewController(config P2PConfiguration) *Controller {
 	c.peerManager = NewPeerManager(c)
 
 	// TODO initialize channels
-	c.stop = make(chan interface{}, 1)
+	c.stop = make(chan interface{}, 1)                  // controller -> self
+	c.In = make(chan interface{}, StandardChannelSize)  // network -> app
+	c.Out = make(chan interface{}, StandardChannelSize) // app -> network
 
 	return c
 }
@@ -199,8 +128,7 @@ func (c *Controller) Stop() {
 	c.peerManager.Stop()
 }
 
-// listenLoop listens for incoming TCP connections
-// passes them off to peer manager
+// listenLoop listens for incoming TCP connections and passes them off to peer manager
 func (c *Controller) listenLoop() {
 	c.logger.Debug("Controller.listenLoop() starting up")
 
@@ -219,13 +147,13 @@ func (c *Controller) listenLoop() {
 	// start permanent loop
 	// terminates on program exit
 	for {
-		// listen for five seconds, then check whether this loop is still running
 		conn, err := listener.Accept()
 		if err != nil {
 			c.logger.WithError(err).Warn("Controller.acceptLoop() error accepting")
 			continue
 		}
 
+		// currently a non-concurrent implementation
 		c.peerManager.HandleIncoming(conn)
 	}
 }
@@ -241,26 +169,34 @@ func (c *Controller) routeLoop() {
 		//c.connections.UpdatePrometheusMetrics()
 		//p2pControllerNumMetrics.Set(float64(len(c.connectionMetrics)))
 
-		// blocking read on c.Out and c.stop
+		// blocking read on c.Out, and c.stop
 		select {
 		case message := <-c.Out:
-			parcel := message.(Parcel)
-			TotalMessagesSent++
-
-			switch parcel.Header.TargetPeer {
-			case FullBroadcastFlag:
-				c.peerManager.Broadcast(parcel, true)
-			case BroadcastFlag:
-				c.peerManager.Broadcast(parcel, true)
-			case RandomPeerFlag:
-				c.peerManager.ToPeer("", parcel)
-			default:
-				c.peerManager.ToPeer(parcel.Header.TargetPeer, parcel)
-			}
+			c.handleParcel(message)
 		// stop this loop if anything shows up
 		case _ = <-c.stop:
 			return
 		}
+	}
+}
+
+func (c *Controller) handleParcel(message interface{}) {
+	parcel, ok := message.(Parcel)
+	if !ok {
+		c.logger.WithField("message", message).Errorf("handleParcel() received unexpected message of type %s", reflect.TypeOf(message))
+		return
+	}
+	TotalMessagesSent++
+
+	switch parcel.Header.TargetPeer {
+	case FullBroadcastFlag:
+		c.peerManager.Broadcast(parcel, true)
+	case BroadcastFlag:
+		c.peerManager.Broadcast(parcel, true)
+	case RandomPeerFlag:
+		c.peerManager.ToPeer("", parcel)
+	default:
+		c.peerManager.ToPeer(parcel.Header.TargetPeer, parcel)
 	}
 }
 
@@ -473,7 +409,7 @@ func (c *Controller) initSpecialPeers(ci ControllerInit) {
 	}
 }
 
-func (c *Controller) parseSpecialPeers(peersString string, peerType uint8) []*Peer {
+func (c *Controller) parseSpecialPeers(peersString string, peerType PeerType) []*Peer {
 	parseFunc := func(c rune) bool {
 		return !unicode.IsLetter(c) && !unicode.IsNumber(c) && !unicode.IsPunct(c)
 	}
