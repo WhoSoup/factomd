@@ -108,6 +108,15 @@ func (p *Peer) Stop() {
 
 }
 
+func (p *Peer) Receive() interface{} {
+	select {
+	case p := <-p.conn.Incoming:
+		return p
+	default:
+		return nil
+	}
+}
+
 func (p *Peer) Init(address string, port string, quality int32, peerType PeerType, connections int) *Peer {
 
 	p.logger = peerLogger.WithFields(log.Fields{

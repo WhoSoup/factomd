@@ -15,6 +15,7 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 type PeerManager struct {
 	controller *Controller
 	config     *P2PConfiguration
+	stop       chan interface{}
 
 	peerMutex   sync.RWMutex
 	peerByHash  PeerMap
@@ -46,6 +47,8 @@ func NewPeerManager(controller *Controller) *PeerManager {
 	pm.peerByHash = make(PeerMap)
 	pm.peerByIP = make(map[string]PeerMap)
 
+	pm.stop = make(chan interface{}, 1)
+
 	// TODO parse config special peers
 
 	return pm
@@ -58,11 +61,37 @@ func (pm *PeerManager) Start() {
 
 	// TODO discover from seed
 	// 		parse and dial special peers
+	go pm.receiveData()
 }
 
 // Stop shuts down the peer manager and all active connections
 func (pm *PeerManager) Stop() {
+	pm.stop <- true
+}
 
+func (pm *PeerManager) receiveData() {
+	for {
+		select {
+		case <-pm.stop:
+			return
+		}
+
+		sent := false
+		pm.peerMutex.Lock()
+		for p := range pm.onlinePeers {
+			peer := pm.peerByHash[p]
+
+			for data := peer.Receive(); data != nil; data = peer.Receive() {
+				sent = true
+				BlockFreeChannelSend(pm.controller.FromNetwork, data)
+			}
+		}
+		pm.peerMutex.Unlock()
+
+		if !sent {
+			time.Sleep(pm.config.PollingRate)
+		}
+	}
 }
 
 // addPeer adds a peer to the manager system
@@ -133,6 +162,8 @@ func (pm *PeerManager) HandleIncoming(con net.Conn) {
 }
 
 func (pm *PeerManager) Broadcast(parcel Parcel, full bool) {
+	pm.peerMutex.RLock()
+	defer pm.peerMutex.RUnlock()
 	if full {
 		for _, p := range pm.peerByHash {
 			p.Send(parcel)
@@ -149,10 +180,12 @@ func (pm *PeerManager) Broadcast(parcel Parcel, full bool) {
 }
 
 func (pm *PeerManager) selectRandomPeers(count uint) []*Peer {
+	pm.peerMutex.RLock()
 	var peers []*Peer
 	for i := range pm.onlinePeers {
 		peers = append(peers, pm.peerByHash[i])
 	}
+	pm.peerMutex.RUnlock() // unlock early before a shuffle
 
 	// not enough to randomize
 	if uint(len(peers)) <= count {
@@ -173,6 +206,8 @@ func (pm *PeerManager) ToPeer(hash string, parcel Parcel) {
 			random[0].Send(parcel)
 		}
 	} else {
+		pm.peerMutex.RLock()
+		defer pm.peerMutex.RUnlock()
 		if peer, ok := pm.peerByHash[hash]; ok {
 			peer.Send(parcel)
 		}
