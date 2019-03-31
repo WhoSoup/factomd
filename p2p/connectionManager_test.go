@@ -201,7 +201,7 @@ func TestConnectionManagerGetRandomRegularSingle(t *testing.T) {
 
 }
 
-func newPeer(address string, port string, peerType uint8) *Peer {
+func newPeer(address string, port string, peerType PeerType) *Peer {
 	return new(Peer).Init(address, port, 100, peerType, 0)
 }
 

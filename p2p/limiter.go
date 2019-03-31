@@ -22,12 +22,15 @@ type limitedConnect struct {
 	time    time.Time
 }
 
-func LimitedListen(network, address string, limit time.Duration) (net.Listener, error) {
-	l, err := net.Listen(network, address)
+func NewLimitedListener(address string, limit time.Duration) (*LimitedListener, error) {
+	l, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
 	}
-	return LimitedListener{
+	if limit < 0 {
+		return nil, fmt.Errorf("Invalid time limit (negative)")
+	}
+	return &LimitedListener{
 		Listener:       l,
 		limit:          limit,
 		lastConnection: time.Time{},
@@ -36,7 +39,7 @@ func LimitedListen(network, address string, limit time.Duration) (net.Listener, 
 }
 
 // clearHistory truncates the history to only relevant entries
-func (ll LimitedListener) clearHistory() {
+func (ll *LimitedListener) clearHistory() {
 	tl := time.Now().Add(-ll.limit) // get timelimit of range to check
 
 	// no connection made in the last X seconds
@@ -63,7 +66,7 @@ func (ll LimitedListener) clearHistory() {
 
 // isInHistory checks if an address has connected in the last X seconds
 // clears history before checking
-func (ll LimitedListener) isInHistory(addr string) bool {
+func (ll *LimitedListener) isInHistory(addr string) bool {
 	ll.clearHistory()
 
 	for _, h := range ll.history {
@@ -75,14 +78,14 @@ func (ll LimitedListener) isInHistory(addr string) bool {
 }
 
 // addToHistory adds an address to the system at the current time
-func (ll LimitedListener) addToHistory(addr string) {
+func (ll *LimitedListener) addToHistory(addr string) {
 	ll.history = append(ll.history, limitedConnect{address: addr, time: time.Now()})
 	ll.lastConnection = time.Now()
 }
 
 // Accept accepts a connection if no other connection attempt from that ip has been made
 // in the specified time frame
-func (ll LimitedListener) Accept() (net.Conn, error) {
+func (ll *LimitedListener) Accept() (net.Conn, error) {
 	con, err := ll.Listener.Accept()
 	if err != nil {
 		return nil, err
@@ -149,7 +152,6 @@ func (l *limitListenerAll) Accept() (net.Conn, error) {
 	if time.Since(l.last) < time.Second {
 		return nil, fmt.Errorf("rate limited")
 	}
-	fmt.Println("Accepted")
 
 	c, err := l.Listener.Accept()
 	if err != nil {

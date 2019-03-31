@@ -135,7 +135,7 @@ func (c *Controller) listenLoop() {
 	tmpLogger := c.logger.WithFields(log.Fields{"address": c.Config.ListenIP, "port": c.Config.ListenPort})
 
 	addr := fmt.Sprintf("%s:%d", c.Config.ListenIP, c.Config.ListenPort)
-	listener, err := LimitedListen("tcp", addr, c.Config.ListenLimit)
+	listener, err := NewLimitedListener(addr, c.Config.ListenLimit)
 	if err != nil {
 		tmpLogger.WithError(err).Error("Controller.Start() unable to start limited listener")
 		return
@@ -303,7 +303,7 @@ func (c *Controller) ReloadSpecialPeers(newPeersConfig string) {
 				)
 				continue
 			}
-			c.logger.Infof("Detected a peer removed from the config file: %s")
+			c.logger.Infof("Detected a peer removed from the config file: %s", oldPeer.Address)
 			toBeRemoved = append(toBeRemoved, oldPeer)
 		}
 	}
