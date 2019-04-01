@@ -39,12 +39,21 @@ const (
 )
 
 type Peer struct {
-	conn       *Connection
-	state      PeerState
-	stateMutex sync.RWMutex
-	stop       chan interface{}
-	Outgoing   bool
-	config     *P2PConfiguration
+	peerManager            *PeerManager
+	conn                   *Connection
+	state                  PeerState
+	stateChange            chan PeerState
+	stateMutex             sync.RWMutex
+	stop                   chan interface{}
+	Outgoing               bool
+	config                 *P2PConfiguration
+	lastPeerRequest        time.Time
+	lastPeerSend           time.Time
+	incoming               chan *Parcel
+	connectionAttempt      time.Time
+	connectionAttemptCount uint
+
+	ListenPort string
 
 	QualityScore int32     // 0 is neutral quality, negative is a bad peer.
 	Address      string    // Must be in form of x.x.x.x
@@ -62,17 +71,8 @@ type Peer struct {
 	logger *log.Entry
 }
 
-func NewPeer(config *P2PConfiguration, address string, outgoing bool) *Peer {
-	p := &Peer{Address: address, Outgoing: outgoing, state: Offline}
-	p.logger = peerLogger.WithFields(log.Fields{
-		"hash":     p.Hash,
-		"address":  p.Address,
-		"port":     p.Port,
-		"outgoing": p.Outgoing,
-	})
-	p.config = config
-	p.stop = make(chan interface{}, 1)
-	return p
+func (p *Peer) String() string {
+	return fmt.Sprintf("%s %s:%s", p.Hash, p.Address, p.ListenPort)
 }
 
 func (p *Peer) HandleActiveConnection(con net.Conn) {
@@ -81,39 +81,96 @@ func (p *Peer) HandleActiveConnection(con net.Conn) {
 		p.conn.Stop()
 	}
 
-	p.conn = NewConnection(con, p.config)
+	p.conn = NewConnection(con, p.config, p.incoming)
 	p.conn.Start()
-	p.state = Online
+	p.stateChange <- Online
+	go p.monitorConnection()
+
 }
 
-func (p *Peer) Send(parcel Parcel) {
+func (p *Peer) Send(parcel *Parcel) {
 	// TODO check peer state machine
 	parcel.Header.NodeID = p.config.NodeID
-	BlockFreeChannelSend(p.conn.Outgoing, parcel)
+	parcel.Header.PeerPort = string(p.config.ListenPort) // notify other side of our port
+	BlockFreeParcelSend(p.conn.Outgoing, parcel)
 }
 
 func (p *Peer) IsLive() bool {
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
 	return p.state != Offline
 }
 
-func (p *Peer) Start() {
-	if p.conn == nil {
-		// create connection, dial?
-	} else {
-		// ??
+func (p *Peer) stateWatch() {
+	for s := range p.stateChange {
+		if s == p.state {
+			p.logger.Debugf("Peer state updated to be the same")
+			continue
+		}
+		switch <-p.stateChange {
+		case Online:
+			p.state = Online
+			go p.monitorConnection()
+		case Offline:
+			p.state = Offline
+			if p.conn != nil {
+				p.conn.Stop()
+				p.conn = nil
+			}
+		case Connecting:
+			p.state = Connecting
+			go p.connect()
+		}
 	}
 }
 
-func (p *Peer) Stop() {
-
+func (p *Peer) Start() {
+	go p.stateWatch()
 }
 
-func (p *Peer) Receive() interface{} {
-	select {
-	case p := <-p.conn.Incoming:
-		return p
-	default:
-		return nil
+func (p *Peer) CanDial() bool {
+	return p.ListenPort != "0"
+}
+
+func (p *Peer) GoOnline() {
+	p.stateChange <- Connecting
+}
+func (p *Peer) GoOffline() {
+	p.stateChange <- Offline
+}
+
+func (p *Peer) connect() {
+	if p.ListenPort == "0" {
+		p.logger.Warnf("Attempted to connect to a peer with no remote listen port")
+		return
+	}
+
+	p.connectionAttempt = time.Now()
+	p.connectionAttemptCount++
+	remote := fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
+	con, err := net.Dial("tcp", remote)
+	if err != nil {
+		p.logger.WithError(err).Errorf("Unable to connect to peer")
+	}
+
+	p.HandleActiveConnection(con) // sets state to online
+}
+
+func (p *Peer) monitorConnection() {
+	for {
+		select {
+		case <-p.conn.Errors:
+			if p.state != Offline { // if we initiated via Stop, we are already offline
+				p.stateChange <- Offline
+			}
+			return
+		case parcel := <-p.incoming:
+			if newport := parcel.Header.PeerPort; newport != p.ListenPort {
+				p.logger.WithFields(log.Fields{"old": p.ListenPort, "new": newport}).Debugf("Listen port changed")
+				p.ListenPort = newport
+			}
+			p.peerManager.Data <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
+		}
 	}
 }
 

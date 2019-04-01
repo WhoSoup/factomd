@@ -82,9 +82,6 @@ type P2PConfiguration struct {
 	// WriteDeadline is the maximum acceptable time to send a single parcel
 	// if a connection takes longer, it is disconnected
 	WriteDeadline time.Duration
-
-	// PollingRate is how long to wait if no peers are currently sending data
-	PollingRate time.Duration
 }
 
 // DefaultP2PConfiguration returns a network configuration with base values
@@ -115,7 +112,6 @@ func DefaultP2PConfiguration() (c P2PConfiguration) {
 
 	c.ReadDeadline = time.Minute * 5  // high enough to accomodate large packets
 	c.WriteDeadline = time.Minute * 5 // but fail eventually
-	c.PollingRate = time.Millisecond * 100
 
 	return
 }

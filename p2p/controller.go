@@ -181,7 +181,7 @@ func (c *Controller) routeLoop() {
 }
 
 func (c *Controller) handleParcel(message interface{}) {
-	parcel, ok := message.(Parcel)
+	parcel, ok := message.(*Parcel)
 	if !ok {
 		c.logger.WithField("message", message).Errorf("handleParcel() received unexpected message of type %s", reflect.TypeOf(message))
 		return

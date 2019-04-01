@@ -27,9 +27,9 @@ var conLogger = packageLogger.WithField("subpack", "connection")
 type Connection struct {
 	conn net.Conn
 
-	Incoming      chan interface{} // messages from the other side
-	Outgoing      chan interface{} // messages to the other side
-	Shutdown      chan error       // connection died
+	Incoming      chan *Parcel // messages from the other side
+	Outgoing      chan *Parcel // messages to the other side
+	Shutdown      chan error   // connection died
 	writeDeadline time.Duration
 	readDeadline  time.Duration
 	encoder       *gob.Encoder // Wire format is gobs in this version, may switch to binary
@@ -83,6 +83,13 @@ var connectionStateStrings = map[uint8]string{
 	ConnectionOffline:      "Offline",
 	ConnectionShuttingDown: "Shutting Down",
 	ConnectionClosed:       "Closed",
+}
+
+type GracefulShutdown struct {
+}
+
+func (g *GracefulShutdown) Error() string {
+	return "Graceful Shutdown initiated"
 }
 
 // ConnectionParcel is sent to convey an application message destined for the network.
@@ -157,11 +164,11 @@ const (
 //
 //////////////////////////////
 
-func NewConnection(conn net.Conn, config *P2PConfiguration) *Connection {
+func NewConnection(conn net.Conn, config *P2PConfiguration, incoming chan *Parcel) *Connection {
 	c := &Connection{}
-	c.Outgoing = make(chan interface{}, StandardChannelSize)
-	c.Incoming = make(chan interface{}, StandardChannelSize)
-	c.Shutdown = make(chan error, 2) // two goroutines = max 2 errors
+	c.Outgoing = make(chan *Parcel, StandardChannelSize)
+	c.Incoming = incoming
+	c.Shutdown = make(chan error, 3) // two goroutines + close() = max 3 errors
 	c.logger = conLogger.WithField("address", conn.RemoteAddr())
 	c.logger.Debug("Connection initialized")
 	c.readDeadline = config.ReadDeadline
@@ -192,7 +199,7 @@ func (c *Connection) readLoop() {
 		c.metrics.BytesReceived += message.Header.Length
 		c.metrics.MessagesReceived++
 		c.TimeLastpacket = time.Now()
-		c.Incoming <- &message
+		BlockFreeParcelSend(c.Incoming, &message)
 	}
 }
 
@@ -200,27 +207,25 @@ func (c *Connection) readLoop() {
 // to the tcp connection
 func (c *Connection) sendLoop() {
 	for {
-		msg := <-c.Incoming
-		if parcel, ok := msg.(*Parcel); ok {
-			c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
-			err := c.encoder.Encode(parcel)
-			if err != nil { // no error is recoverable
-				c.Shutdown <- err
-				c.logger.WithError(err).Debug("Terminating sendLoop because of error")
-				return
-			}
-
-			c.metrics.BytesSent += parcel.Header.Length
-			c.metrics.MessagesSent++
-		} else {
-			c.logger.WithField("data", msg).Error("unexpected data arrived in channel")
+		parcel := <-c.Incoming
+		c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
+		err := c.encoder.Encode(parcel)
+		if err != nil { // no error is recoverable
+			c.Shutdown <- err
+			c.logger.WithError(err).Debug("Terminating sendLoop because of error")
+			return
 		}
+
+		c.metrics.BytesSent += parcel.Header.Length
+		c.metrics.MessagesSent++
 	}
 }
 
 func (c *Connection) Stop() {
 	c.logger.Debug("Stopping connection")
+	c.Errors <- &GracefulShutdown{}
 	c.conn.Close() // this will force both sendLoop and readLoop to stop immediately
+	//close(c.Incoming) // this will get peer to stop reading from this channel
 }
 
 // InitWithConn is called from our accept loop when a peer dials into us and we already have a network conn
