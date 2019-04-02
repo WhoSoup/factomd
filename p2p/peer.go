@@ -42,11 +42,10 @@ type Peer struct {
 	peerManager            *PeerManager
 	conn                   *Connection
 	state                  PeerState
-	stateChange            chan PeerState
 	stateMutex             sync.RWMutex
 	stop                   chan interface{}
 	Outgoing               bool
-	config                 *P2PConfiguration
+	config                 *Configuration
 	lastPeerRequest        time.Time
 	lastPeerSend           time.Time
 	incoming               chan *Parcel
@@ -75,99 +74,121 @@ func (p *Peer) String() string {
 	return fmt.Sprintf("%s %s:%s", p.Hash, p.Address, p.ListenPort)
 }
 
-func (p *Peer) HandleActiveConnection(con net.Conn) {
-	if p.conn != nil {
-		p.logger.Warn("Terminating existing connection with superceding TCP connection")
-		p.conn.Stop()
+func (p *Peer) StartToDial() {
+	if !p.CanDial() {
+		p.logger.Errorf("Attempted to connect to a peer with no remote listen port")
+		return
 	}
 
+	p.stateMutex.Lock()
+	defer p.stateMutex.Unlock()
+
+	if p.conn != nil {
+		p.logger.WithField("old_conn", p.conn).Warn("Peer started to dial despite not being offline")
+		p.conn.Stop()
+		p.conn = nil
+	}
+
+	p.Outgoing = true
+	p.state = Connecting
+	p.connectionAttempt = time.Now()
+	p.connectionAttemptCount++
+	remote := fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
+	con, err := net.Dial("tcp", remote)
+	if err != nil {
+		p.logger.WithError(err).Infof("Unable to connect to peer")
+		return
+	}
+
+	p.startInternal(con)
+}
+
+func (p *Peer) StartWithActiveConnection(con net.Conn) {
+	if p.conn != nil {
+		p.logger.WithField("old_conn", p.conn).Warn("Peer given new connection despite having old one")
+		p.conn.Stop()
+		p.conn = nil
+	}
+	p.stateMutex.Lock()
+	defer p.stateMutex.Unlock()
+
+	p.startInternal(con)
+}
+
+// startInternal is the common functionality for both dialing and accepting a connection
+// is under locked mutex from superior function
+func (p *Peer) startInternal(con net.Conn) {
 	p.conn = NewConnection(con, p.config, p.incoming)
 	p.conn.Start()
-	p.stateChange <- Online
-	go p.monitorConnection()
+	p.state = Online
+	go p.monitorConnection() // this will die when the connection is closed
+}
 
+func (p *Peer) GoOffline() {
+	p.stateMutex.Lock()
+	defer p.stateMutex.Lock()
+	p.state = Offline
+	p.stop <- true
 }
 
 func (p *Peer) Send(parcel *Parcel) {
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
+	if p.state != Online {
+		if p.state == Connecting {
+			log.Error("Tried to send parcel connection still connecting")
+		} else {
+			log.Error("Tried to send parcel on offline connection")
+		}
+		return
+	}
 	// TODO check peer state machine
 	parcel.Header.NodeID = p.config.NodeID
 	parcel.Header.PeerPort = string(p.config.ListenPort) // notify other side of our port
 	BlockFreeParcelSend(p.conn.Outgoing, parcel)
 }
 
-func (p *Peer) IsLive() bool {
-	p.stateMutex.RLock()
-	defer p.stateMutex.RUnlock()
-	return p.state != Offline
-}
-
-func (p *Peer) stateWatch() {
-	for s := range p.stateChange {
-		if s == p.state {
-			p.logger.Debugf("Peer state updated to be the same")
-			continue
-		}
-		switch <-p.stateChange {
-		case Online:
-			p.state = Online
-			go p.monitorConnection()
-		case Offline:
-			p.state = Offline
-			if p.conn != nil {
-				p.conn.Stop()
-				p.conn = nil
-			}
-		case Connecting:
-			p.state = Connecting
-			go p.connect()
-		}
-	}
-}
-
-func (p *Peer) Start() {
-	go p.stateWatch()
-}
-
 func (p *Peer) CanDial() bool {
 	return p.ListenPort != "0"
 }
 
-func (p *Peer) GoOnline() {
-	p.stateChange <- Connecting
+func (p *Peer) IsOnline() bool {
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
+	return p.state == Online
 }
-func (p *Peer) GoOffline() {
-	p.stateChange <- Offline
-}
-
-func (p *Peer) connect() {
-	if p.ListenPort == "0" {
-		p.logger.Warnf("Attempted to connect to a peer with no remote listen port")
-		return
-	}
-
-	p.connectionAttempt = time.Now()
-	p.connectionAttemptCount++
-	remote := fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
-	con, err := net.Dial("tcp", remote)
-	if err != nil {
-		p.logger.WithError(err).Errorf("Unable to connect to peer")
-	}
-
-	p.HandleActiveConnection(con) // sets state to online
+func (p *Peer) IsOffline() bool {
+	p.stateMutex.RLock()
+	defer p.stateMutex.RUnlock()
+	return p.state == Offline
 }
 
+// monitorConnection watches the underlying Connection.
+// Any data arriving via connection will be passed on to the peer manager.
+// If the connection dies, change state to Offline
 func (p *Peer) monitorConnection() {
 	for {
 		select {
+		case <-p.stop: // manual stop, we need to tear down connection
+			p.conn.Stop()
+			p.conn = nil
+			p.connectionAttemptCount = 0
+			return
 		case <-p.conn.Errors:
-			if p.state != Offline { // if we initiated via Stop, we are already offline
-				p.stateChange <- Offline
-			}
+			p.stateMutex.Lock()
+			defer p.stateMutex.Lock()
+			p.state = Offline
+			p.conn = nil // if an error arrives here, the connection already stops itself
+			p.connectionAttemptCount = 0
 			return
 		case parcel := <-p.incoming:
 			if newport := parcel.Header.PeerPort; newport != p.ListenPort {
 				p.logger.WithFields(log.Fields{"old": p.ListenPort, "new": newport}).Debugf("Listen port changed")
 				p.ListenPort = newport
+			}
+			if nodeid := parcel.Header.NodeID; nodeid != p.NodeID {
+				p.logger.WithFields(log.Fields{"old": p.NodeID, "new": nodeid}).Debugf("NodeID changed")
+				p.NodeID = nodeid
 			}
 			p.peerManager.Data <- PeerParcel{Peer: p, Parcel: parcel} // TODO this is potentially blocking
 		}
@@ -333,7 +354,7 @@ func (p PeerQualitySort) Less(i, j int) bool {
 }
 
 // sort.Sort interface implementation
-type PeerDistanceSort []Peer
+type PeerDistanceSort []*Peer
 
 func (p PeerDistanceSort) Len() int {
 	return len(p)

@@ -164,7 +164,7 @@ const (
 //
 //////////////////////////////
 
-func NewConnection(conn net.Conn, config *P2PConfiguration, incoming chan *Parcel) *Connection {
+func NewConnection(conn net.Conn, config *Configuration, incoming chan *Parcel) *Connection {
 	c := &Connection{}
 	c.Outgoing = make(chan *Parcel, StandardChannelSize)
 	c.Incoming = incoming

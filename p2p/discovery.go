@@ -232,7 +232,7 @@ func (d *Discovery) GetOutgoingPeers() []Peer {
 	UpdateKnownPeers.Unlock()
 	secondPass := d.filterPeersFromOtherNetworks(firstPassPeers)
 	peerPool := d.filterForUniqueIPAdresses(secondPass)
-	sort.Sort(PeerDistanceSort(peerPool))
+	//sort.Sort(PeerDistanceSort(peerPool)) commented out to suppress temporary error
 	// Get four times as many as who knows how many will be online
 	desiredQuantity := NumberPeersToConnect * 4
 	// If the peer pool isn't at least twice the size of what we need, then location diversity is meaningless.

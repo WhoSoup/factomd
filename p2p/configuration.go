@@ -2,8 +2,8 @@ package p2p
 
 import "time"
 
-// P2PConfiguration defines the behavior of the gossip network protocol
-type P2PConfiguration struct {
+// Configuration defines the behavior of the gossip network protocol
+type Configuration struct {
 	// Network is the NetworkID of the network to use, eg. MainNet, TestNet, etc
 	Network NetworkID
 
@@ -86,7 +86,7 @@ type P2PConfiguration struct {
 
 // DefaultP2PConfiguration returns a network configuration with base values
 // These should be overwritten with command line and config parameters
-func DefaultP2PConfiguration() (c P2PConfiguration) {
+func DefaultP2PConfiguration() (c *Configuration) {
 	c.Network = MainNet
 	c.NodeID = 0
 	c.NodeName = "FNode0"

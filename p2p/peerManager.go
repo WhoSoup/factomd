@@ -14,16 +14,16 @@ var pmLogger = packageLogger.WithField("subpack", "peerManager")
 // PeerManager is responsible for managing all the Peers, both online and offline
 type PeerManager struct {
 	controller *Controller
-	config     *P2PConfiguration
+	config     *Configuration
 	stop       chan interface{}
 	Data       chan PeerParcel
 
-	peerMutex   sync.RWMutex
-	peerByHash  PeerMap
-	peerByIP    map[string]PeerMap
-	onlinePeers map[string]bool // set of online peers
-	incoming    uint
-	outgoing    uint
+	peerMutex  sync.RWMutex
+	peerByHash PeerMap
+	peerByIP   map[string]PeerMap
+	//onlinePeers map[string]bool // set of online peers
+	incoming uint
+	outgoing uint
 
 	specialIP map[string]bool
 
@@ -152,32 +152,7 @@ func (pm *PeerManager) managePeers() {
 	}*/
 }
 
-/*func (pm *PeerManager) receiveData() {
-	for {
-		select {
-		case <-pm.stop:
-			return
-		}
-
-		sent := false
-		pm.peerMutex.Lock()
-		for p := range pm.onlinePeers {
-			peer := pm.peerByHash[p]
-
-			for data := peer.Receive(); data != nil; data = peer.Receive() {
-				sent = true
-				BlockFreeChannelSend(pm.controller.FromNetwork, data)
-			}
-		}
-		pm.peerMutex.Unlock()
-
-		if !sent {
-			time.Sleep(pm.config.PollingRate)
-		}
-	}
-}*/
-
-func (pm *PeerManager) SpawnPeer(config *P2PConfiguration, address string, outgoing bool, listenPort string) *Peer {
+func (pm *PeerManager) SpawnPeer(config *Configuration, address string, outgoing bool, listenPort string) *Peer {
 	p := &Peer{Address: address, Outgoing: outgoing, state: Offline, ListenPort: listenPort}
 	p.peerManager = pm
 	p.logger = peerLogger.WithFields(log.Fields{
@@ -190,7 +165,7 @@ func (pm *PeerManager) SpawnPeer(config *P2PConfiguration, address string, outgo
 	p.config = config
 	p.stop = make(chan interface{}, 1)
 	p.incoming = make(chan *Parcel, StandardChannelSize)
-	p.stateChange = make(chan PeerState, 1)
+	p.Hash = address + ":" + listenPort // TODO make this a hash
 	pm.addPeer(p)
 	return p
 }
@@ -243,7 +218,7 @@ func (pm *PeerManager) HandleIncoming(con net.Conn) {
 	}
 
 	p := pm.SpawnPeer(pm.config, ip, false, "0")
-	p.HandleActiveConnection(con) // peer is online
+	p.StartWithActiveConnection(con) // peer is online
 
 	//c := NewConnection(con, pm.config)
 
@@ -280,11 +255,26 @@ func (pm *PeerManager) Broadcast(parcel *Parcel, full bool) {
 	// TODO always send to special
 }
 
+func (pm *PeerManager) sortedOutgoing(desired int) []*Peer {
+	var filtered []*Peer
+	pm.peerMutex.RLock()
+	for _, p := range pm.peerByHash {
+		if p.IsOffline() && p.CanDial() && (!p.config.TrustedOnly || p.IsSpecial()) {
+			filtered = append(filtered, p)
+		}
+	}
+	pm.peerMutex.RUnlock()
+
+	return filtered
+}
+
 func (pm *PeerManager) selectRandomPeers(count uint) []*Peer {
 	pm.peerMutex.RLock()
 	var peers []*Peer
-	for i := range pm.onlinePeers {
-		peers = append(peers, pm.peerByHash[i])
+	for _, p := range pm.peerByHash {
+		if p.IsOnline() {
+			peers = append(peers, p)
+		}
 	}
 	pm.peerMutex.RUnlock() // unlock early before a shuffle
 

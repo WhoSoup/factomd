@@ -37,7 +37,7 @@ type Controller struct {
 	listenPort string // port to listen on for new connections
 
 	peerManager *PeerManager
-	Config      *P2PConfiguration
+	Config      *Configuration
 	In          chan interface{} // incoming messages from the network to the app
 	Out         chan interface{} // outgoing messages to the network
 	stop        chan interface{}
@@ -94,13 +94,13 @@ type ControllerInit struct {
 //////////////////////////////////////////////////////////////////////
 
 // NewController creates a new P2P Network controller with the specified configuration
-func NewController(config P2PConfiguration) *Controller {
+func NewController(config *Configuration) *Controller {
 	c := &Controller{}
 	c.logger = controllerLogger.WithFields(log.Fields{
 		"node":    config.NodeName,
 		"port":    config.ListenPort,
 		"network": fmt.Sprintf("%#x", config.Network)})
-	c.Config = &config
+	c.Config = config
 	c.peerManager = NewPeerManager(c)
 
 	// TODO initialize channels
