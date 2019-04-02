@@ -1,98 +1,86 @@
-package p2p_test
+package p2p
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"net"
 	"testing"
 	"time"
 
-	. "github.com/FactomProject/factomd/p2p"
+	log "github.com/sirupsen/logrus"
 )
 
-func TestParcelString(t *testing.T) {
-	p := NewParcel(0, []byte{0xFF})
-	c := new(ConnectionParcel)
-	c.Parcel = *p
+func TestConnection(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+	testParcels := 50
 
-	correct := `{"Parcel":{"Header":{"Network":0,"Version":9,"Type":6,"Length":1,"TargetPeer":"","Crc32":4278190080,"PartNo":0,"PartsTotal":0,"NodeID":0,"PeerAddress":"","PeerPort":"8108","AppHash":"NetworkMessage","AppType":"Network"},"Payload":"/w=="}}`
-	data, err := c.JSONByte()
-	if err != nil {
-		t.Error(err)
+	incoming1 := make(chan *Parcel, StandardChannelSize)
+	incoming2 := make(chan *Parcel, StandardChannelSize)
+	config := DefaultP2PConfiguration()
+	config.ReadDeadline = time.Second
+	config.WriteDeadline = time.Second
+
+	pipe1, pipe2 := net.Pipe()
+
+	// test 1 write garbage
+	con1 := NewConnection(pipe1, &config, incoming1)
+	con2 := NewConnection(pipe2, &config, incoming2)
+
+	con1.Start()       // start via Start()
+	go con2.readLoop() // start "manually"
+	go con2.sendLoop()
+
+	var parcels []*Parcel
+	for i := 0; i < testParcels; i++ {
+		p := NewParcel(config.Network, []byte(fmt.Sprintf("%d", i)))
+		parcels = append(parcels, p)
 	}
 
-	if string(data) != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
+	for _, p := range parcels {
+		con1.Outgoing <- p
 	}
 
-	str, err := c.JSONString()
-	if err != nil {
-		t.Error(err)
+	fmt.Println("Sent garbage parcels")
+
+	for len(con1.Outgoing) > 0 { // wait until everything is sent
+		time.Sleep(time.Millisecond * 10)
 	}
 
-	if str != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
+	var reply []*Parcel
+	for len(incoming2) > 0 {
+		reply = append(reply, <-incoming2)
 	}
 
-	str = c.String()
-	if str != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
-	}
-}
-
-func TestConnectionCommandString(t *testing.T) {
-	c := new(ConnectionCommand)
-	c.Command = 4
-	c.Delta = 2
-
-	correct := `{"Command":4,"Peer":{"QualityScore":0,"Address":"","Port":"","NodeID":0,"Hash":"","Location":0,"Network":0,"Type":0,"Connections":0,"LastContact":"0001-01-01T00:00:00Z","Source":null},"Delta":2,"Metrics":{"MomentConnected":"0001-01-01T00:00:00Z","BytesSent":0,"BytesReceived":0,"MessagesSent":0,"MessagesReceived":0,"PeerAddress":"","PeerQuality":0,"PeerType":"","ConnectionState":"","ConnectionNotes":""}}`
-
-	data, err := c.JSONByte()
-	if err != nil {
-		t.Error(err)
+	if len(reply) != len(parcels) {
+		t.Errorf("some parcels dropped. sent = %d, received = %d", len(parcels), len(reply))
 	}
 
-	if string(data) != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
+	for i := range reply {
+		if bytes.Compare(reply[i].Payload, parcels[i].Payload) != 0 {
+			t.Errorf("received parcels out of order. expected %s got %s", parcels[i].Payload, reply[i].Payload)
+		}
 	}
 
-	str, err := c.JSONString()
-	if err != nil {
-		t.Error(err)
+	// push NON-parcel into the system
+	con1.encoder.Encode([]byte("garbage"))
+
+	time.Sleep(time.Millisecond * 50)
+
+	if len(con2.Shutdown) == 0 {
+		t.Error("Expected error in connection 2 after writing garbage, got nothing")
+	} else {
+		e := <-con2.Shutdown
+		if e.Error() != "gob: type mismatch in decoder: want struct type p2p.Parcel; got non-struct" {
+			t.Errorf("Expected gob type mismatch error on Connection2, got: %s", e.Error())
+		}
 	}
-
-	if str != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
+	if len(con1.Shutdown) == 0 {
+		t.Fatal("Expected error in connection 1 after writing garbage, got nothing")
+	} else {
+		e := <-con1.Shutdown
+		if e != io.EOF {
+			t.Errorf("Expected EOF on Connection1, got: %s", e.Error())
+		}
 	}
-
-	str = c.String()
-	if str != correct {
-		t.Error("JSON format has changed in ConnectionParcels")
-	}
-}
-
-// NodeID is global, so we will only have loopbacks and go offline
-func TestConnectionLoopBack(t *testing.T) {
-	peer1 := new(Peer).Init("1.1.1.1", "1111", 0, RegularPeer, 0)
-	peer1.Source["Accept()"] = time.Now()
-
-	con1, con2 := net.Pipe()
-
-	c1 := new(Connection)
-	c1.InitWithConn(con1, *peer1)
-
-	peer2 := new(Peer).Init("2.2.2.2", "1111", 0, RegularPeer, 0)
-	peer2.Source["Accept()"] = time.Now()
-
-	c2 := new(Connection)
-	c2.InitWithConn(con2, *peer2)
-
-	c1.Start()
-	c2.Start()
-
-	time.Sleep(400 * time.Millisecond)
-	if c1.IsOnline() {
-		t.Error("Should not be online as we have same nodeID")
-	}
-
-	con1.Close()
-	con2.Close()
 }

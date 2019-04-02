@@ -173,10 +173,15 @@ func NewConnection(conn net.Conn, config *P2PConfiguration, incoming chan *Parce
 	c.logger.Debug("Connection initialized")
 	c.readDeadline = config.ReadDeadline
 	c.writeDeadline = config.WriteDeadline
+	c.conn = conn
+	c.encoder = gob.NewEncoder(c.conn)
+	c.decoder = gob.NewDecoder(c.conn)
 
 	return c
 }
 
+// Start the connection, make it read and write from the connection
+// starts two goroutines
 func (c *Connection) Start() {
 	c.logger.Debug("Starting connection")
 	go c.readLoop()
@@ -184,12 +189,12 @@ func (c *Connection) Start() {
 }
 
 func (c *Connection) readLoop() {
+	defer c.conn.Close() // close connection on fatal error
 	for {
 		var message Parcel
 
 		c.conn.SetReadDeadline(time.Now().Add(c.readDeadline))
 		err := c.decoder.Decode(&message)
-
 		if err != nil {
 			c.Shutdown <- err
 			c.logger.WithError(err).Debug("Terminating readLoop because of error")
@@ -203,11 +208,18 @@ func (c *Connection) readLoop() {
 	}
 }
 
-// sendLoop listens to the Incoming channel, pushing all data from there
+// sendLoop listens to the Outgoing channel, pushing all data from there
 // to the tcp connection
 func (c *Connection) sendLoop() {
+	defer c.conn.Close() // close connection on fatal error
 	for {
-		parcel := <-c.Incoming
+		parcel := <-c.Outgoing
+
+		if parcel == nil {
+			c.logger.Error("Received <nil> pointer")
+			continue
+		}
+
 		c.conn.SetWriteDeadline(time.Now().Add(c.writeDeadline))
 		err := c.encoder.Encode(parcel)
 		if err != nil { // no error is recoverable
