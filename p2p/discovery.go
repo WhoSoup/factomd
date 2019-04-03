@@ -218,7 +218,6 @@ func (d *Discovery) filterForUniqueIPAdresses(peers []Peer) (filtered []Peer) {
 //  -- continue until there are no candidates left, or we have our set.
 func (d *Discovery) GetOutgoingPeers() []Peer {
 	firstPassPeers := []Peer{}
-	selectedPeers := map[string]Peer{}
 	UpdateKnownPeers.Lock()
 	for _, peer := range d.knownPeers {
 		switch {
@@ -232,32 +231,37 @@ func (d *Discovery) GetOutgoingPeers() []Peer {
 	UpdateKnownPeers.Unlock()
 	secondPass := d.filterPeersFromOtherNetworks(firstPassPeers)
 	peerPool := d.filterForUniqueIPAdresses(secondPass)
-	sort.Sort(PeerDistanceSort(peerPool))
-	// Get four times as many as who knows how many will be online
-	desiredQuantity := NumberPeersToConnect * 4
-	// If the peer pool isn't at least twice the size of what we need, then location diversity is meaningless.
-	if len(peerPool) < desiredQuantity*2 {
+
+	wanted := NumberPeersToConnect * 4
+	if len(peerPool) <= wanted {
 		return peerPool
 	}
-	// Algo is to divide peers up into buckets, sorted by distance.
-	// Number of buckets is the number of peers we want to get.
-	// Then given the size of each bucket, pick a random peer in the bucket.
-	bucketSize := 1 + int(len(peerPool)-1/desiredQuantity)
-	for index := 0; index < int(desiredQuantity); index++ {
-		bucketIndex := int(index / desiredQuantity * len(peerPool))
-		newPeerIndex := bucketIndex + rand.Intn(bucketSize)
-		if newPeerIndex > len(peerPool)-1 {
-			newPeerIndex = len(peerPool) - 1
-		}
-		newPeer := peerPool[newPeerIndex]
-		selectedPeers[newPeer.Address] = newPeer
+
+	buckets := make([][]Peer, wanted)
+	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
+
+	// distribute peers over n buckets
+	for _, peer := range peerPool {
+		bucketIndex := int(peer.Location / bucketSize)
+		buckets[bucketIndex] = append(buckets[bucketIndex], peer)
 	}
 
-	// Now derive a slice of peers to return
-	finalSet := []Peer{}
-	for _, v := range selectedPeers {
-		finalSet = append(finalSet, v)
+	// pick random peers from each bucket
+	var finalSet []Peer
+	for len(finalSet) < wanted {
+		offset := d.rng.Intn(len(buckets)) // start at a random point in the bucket array
+		for i := 0; i < len(buckets); i++ {
+			bi := (i + offset) % len(buckets)
+			bucket := buckets[bi]
+			if len(bucket) > 0 {
+				pi := d.rng.Intn(len(bucket)) // random member in bucket
+				finalSet = append(finalSet, bucket[pi])
+				bucket[pi] = bucket[len(bucket)-1] // fast remove
+				buckets[bi] = bucket[:len(bucket)-1]
+			}
+		}
 	}
+
 	d.logger.Debugf("discovery.GetOutgoingPeers() got the following peers: %+v", finalSet)
 	return finalSet
 }
