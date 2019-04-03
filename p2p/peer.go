@@ -149,7 +149,7 @@ func (p *Peer) Send(parcel *Parcel) {
 }
 
 func (p *Peer) CanDial() bool {
-	return p.ListenPort != "0"
+	return p.ListenPort != "0" && p.connectionAttemptCount < p.config.RedialAttempts
 }
 
 func (p *Peer) IsOnline() bool {

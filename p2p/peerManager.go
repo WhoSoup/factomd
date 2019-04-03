@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -28,7 +29,9 @@ type PeerManager struct {
 	specialIP map[string]bool
 
 	lastPeerRequest time.Time
+	lastPeerDial    time.Time
 
+	rng    *rand.Rand
 	logger *log.Entry
 }
 
@@ -52,6 +55,7 @@ func NewPeerManager(controller *Controller) *PeerManager {
 	pm.Data = make(chan PeerParcel, StandardChannelSize)
 
 	// TODO parse config special peers
+	pm.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	return pm
 }
@@ -142,6 +146,36 @@ func (pm *PeerManager) sharePeers(peer *Peer) {
 }
 
 func (pm *PeerManager) managePeers() {
+	for {
+
+		if time.Since(pm.lastPeerDial) > pm.config.RedialInterval {
+			pm.lastPeerDial = time.Now()
+			pm.managePeersDialOutgoing()
+		}
+
+	}
+
+	// manager peers every second
+	time.Sleep(time.Second)
+}
+
+func (pm *PeerManager) managePeersDialOutgoing() {
+	var count uint // online OR dialing
+	for _, p := range pm.peerByHash {
+		if !p.IsOffline() {
+			count++
+			// TODO subtract special?
+		}
+	}
+
+	if want := int(pm.config.Outgoing - count); want > 0 {
+		filter := pm.filteredOutgoing()
+		peers := pm.getOutgoingSelection(filter, want)
+		for _, p := range peers {
+			p.StartToDial()
+		}
+	}
+
 	// remove old peers
 	// search for duplicates
 
@@ -255,7 +289,9 @@ func (pm *PeerManager) Broadcast(parcel *Parcel, full bool) {
 	// TODO always send to special
 }
 
-func (pm *PeerManager) sortedOutgoing(desired int) []*Peer {
+// filteredOutgoing generates a subset of peers that we can dial and
+// are not already connected
+func (pm *PeerManager) filteredOutgoing() []*Peer {
 	var filtered []*Peer
 	pm.peerMutex.RLock()
 	for _, p := range pm.peerByHash {
@@ -266,6 +302,49 @@ func (pm *PeerManager) sortedOutgoing(desired int) []*Peer {
 	pm.peerMutex.RUnlock()
 
 	return filtered
+}
+
+// getOutgoingSelection creates a subset of total connectable peers by getting
+// as much prefix variation as possible
+//
+// takes the input and spreads peers out over n equally sized buckets based on their
+// ipv4 prefix, then iterates over those buckets and removes a random peer from each
+// one until it has enough
+func (pm *PeerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Peer {
+	// we have just enough
+	if len(filtered) <= wanted {
+		pm.logger.Debugf("getOutgoingSelection returning %d peers", len(filtered))
+		return filtered
+	}
+
+	// generate a list of peers distant to each other
+	buckets := make([][]*Peer, wanted)
+	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
+
+	// distribute peers over n buckets
+	for _, peer := range filtered {
+		bucketIndex := int(peer.Location / bucketSize)
+		buckets[bucketIndex] = append(buckets[bucketIndex], peer)
+	}
+
+	// pick random peers from each bucket
+	var picked []*Peer
+	for len(picked) < wanted {
+		offset := pm.rng.Intn(len(buckets)) // start at a random point in the bucket array
+		for i := 0; i < len(buckets); i++ {
+			bi := (i + offset) % len(buckets)
+			bucket := buckets[bi]
+			if len(bucket) > 0 {
+				pi := pm.rng.Intn(len(bucket)) // random member in bucket
+				picked = append(picked, bucket[pi])
+				bucket[pi] = bucket[len(bucket)-1] // fast remove
+				buckets[bi] = bucket[:len(bucket)-1]
+			}
+		}
+	}
+
+	pm.logger.Debugf("getOutgoingSelection returning %d peers: %+v", len(picked), picked)
+	return picked
 }
 
 func (pm *PeerManager) selectRandomPeers(count uint) []*Peer {
