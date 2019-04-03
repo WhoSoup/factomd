@@ -1,9 +1,12 @@
 package p2p
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -28,8 +31,9 @@ type PeerManager struct {
 
 	specialIP map[string]bool
 
-	lastPeerRequest time.Time
-	lastPeerDial    time.Time
+	lastPeerRequest        time.Time
+	lastPeerDial           time.Time
+	lastPeerDuplicateCheck time.Time
 
 	rng    *rand.Rand
 	logger *log.Entry
@@ -45,7 +49,7 @@ func NewPeerManager(controller *Controller) *PeerManager {
 	pm.logger = pmLogger.WithFields(log.Fields{
 		"node":    pm.config.NodeName,
 		"port":    pm.config.ListenPort,
-		"network": fmt.Sprintf("%#x", pm.config.Network)})
+		"network": fmt.Sprintf("%s", pm.config.Network)})
 	pm.logger.WithField("peermanager_init", pm.controller.Config).Debugf("Initializing Peer Manager")
 
 	pm.peerByHash = make(PeerMap)
@@ -89,6 +93,13 @@ func (pm *PeerManager) manageData() {
 		parcel := data.Parcel
 		peer := data.Peer
 
+		// wrong network
+		if parcel.Header.Network != pm.config.Network {
+			pm.logger.Warnf("Peer %s tried to send a message for network %s, disconnecting", peer, parcel.Header.Network)
+			pm.banPeer(peer)
+			continue
+		}
+
 		switch parcel.Header.Type {
 		case TypeMessagePart: // deprecated
 		case TypeHeartbeat: // deprecated
@@ -123,50 +134,145 @@ func (pm *PeerManager) manageData() {
 
 }
 
-func (pm *PeerManager) processPeers(peer *Peer, parcel *Parcel) {
-	for {
-		select {
-		case <-time.After(time.Second): // TODO make peerManageInterval variable
-			for _, p := range pm.peerByHash {
-				// request peers
-				if time.Since(p.lastPeerRequest) > p.config.PeerRequestInterval {
-					p.lastPeerRequest = time.Now()
+func (pm *PeerManager) discoverSeeds() {
+	pm.logger.Info("Contacting seed URL to get peers")
+	resp, err := http.Get(pm.config.SeedURL)
+	if nil != err {
+		pm.logger.Errorf("discoverSeeds from %s produced error %+v", pm.config.SeedURL, err)
+		return
+	}
+	defer resp.Body.Close()
 
-					parcel := NewParcel(pm.config.Network, []byte("Peer Request"))
-					parcel.Header.Type = TypePeerRequest
-					p.Send(parcel)
-				}
-			}
+	scanner := bufio.NewScanner(resp.Body)
+	report := ""
+	for scanner.Scan() {
+		line := scanner.Text()
+		report = report + "," + line
+
+		address, port, err := net.SplitHostPort(line)
+		if err == nil {
+			// TODO check if seed exists?
+			seed := pm.SpawnPeer(address, true, port)
+			pm.addPeer(seed)
+		} else {
+			pm.logger.Errorf("Bad peer in " + pm.config.SeedURL + " [" + line + "]")
+		}
+
+	}
+
+	pm.logger.Debugf("discoverSeed got peers: %s", report)
+}
+
+// processPeers processes a peer share response
+func (pm *PeerManager) processPeers(peer *Peer, parcel *Parcel) {
+	var list []Peer
+	err := json.Unmarshal(parcel.Payload, list)
+	if err != nil {
+		pm.logger.WithError(err).Warn("Failed to unmarshal peer share from peer %s", peer)
+	}
+
+	known := make(map[string]bool)
+	pm.peerMutex.RLock()
+	for _, p := range pm.peerByHash {
+		known[p.ConnectAddress()] = true
+	}
+	pm.peerMutex.RUnlock()
+
+	for _, p := range list {
+		if !known[p.ConnectAddress()] {
+			known[p.ConnectAddress()] = true
+
+			add := pm.SpawnPeer(p.Address, true, p.ListenPort)
+			pm.addPeer(add)
 		}
 	}
 }
 
+// sharePeers creates a list of peers to share and sends it to peer
 func (pm *PeerManager) sharePeers(peer *Peer) {
+	list := pm.filteredSharing()
 
+	json, ok := json.Marshal(list)
+	if ok != nil {
+		pm.logger.WithError(ok).Error("Failed to marshal peer list to json")
+		return
+	}
+	parcel := pm.controller.CreateParcel(TypePeerResponse, json)
+	peer.Send(parcel)
 }
 
 func (pm *PeerManager) managePeers() {
 	for {
+		/*if time.Since(pm.lastPeerDuplicateCheck) > pm.config.RedialInterval {
+			pm.managePeersDetectDuplicate()
+		}*/
 
+		// manage online connectivity
 		if time.Since(pm.lastPeerDial) > pm.config.RedialInterval {
 			pm.lastPeerDial = time.Now()
 			pm.managePeersDialOutgoing()
 		}
 
+		for _, p := range pm.peerByHash {
+			if p.IsOnline() {
+				if time.Since(p.lastPeerRequest) > p.config.PeerRequestInterval {
+					p.lastPeerRequest = time.Now()
+
+					req := pm.controller.CreateParcel(TypePeerRequest, []byte("Peer Request"))
+					p.Send(req)
+				}
+
+				if time.Since(p.lastPeerSend) > pm.config.PingInterval {
+					// should update the lastpeersend on its own
+					ping := pm.controller.CreateParcel(TypePing, []byte("Ping"))
+					p.Send(ping)
+				}
+			}
+		}
+
+		// manager peers every second
+		time.Sleep(time.Second)
+
 	}
 
-	// manager peers every second
-	time.Sleep(time.Second)
+}
+
+func (pm *PeerManager) managePeersDetectDuplicate() {
+	exists := make(map[string]*Peer)
+	var remove []*Peer
+	pm.peerMutex.RLock()
+	for _, p := range pm.peerByHash {
+		addr := p.ConnectAddress()
+		if other, ok := exists[addr]; ok {
+			if p.Better(other) {
+				remove = append(remove, other)
+				exists[addr] = p
+			} else {
+				remove = append(remove, p)
+			}
+		} else {
+			exists[addr] = p
+		}
+	}
+	pm.peerMutex.RUnlock()
+
+	if len(remove) > 0 {
+		for _, p := range remove {
+			pm.removePeer(p)
+		}
+	}
 }
 
 func (pm *PeerManager) managePeersDialOutgoing() {
 	var count uint // online OR dialing
+	pm.peerMutex.RLock()
 	for _, p := range pm.peerByHash {
 		if !p.IsOffline() {
 			count++
 			// TODO subtract special?
 		}
 	}
+	pm.peerMutex.RUnlock()
 
 	if want := int(pm.config.Outgoing - count); want > 0 {
 		filter := pm.filteredOutgoing()
@@ -175,18 +281,9 @@ func (pm *PeerManager) managePeersDialOutgoing() {
 			p.StartToDial()
 		}
 	}
-
-	// remove old peers
-	// search for duplicates
-
-	/*	for {
-		peer := <-pm.ShutDown
-		pm.removePeer(peer)
-		pm.Stop()
-	}*/
 }
 
-func (pm *PeerManager) SpawnPeer(config *Configuration, address string, outgoing bool, listenPort string) *Peer {
+func (pm *PeerManager) SpawnPeer(address string, outgoing bool, listenPort string) *Peer {
 	p := &Peer{Address: address, Outgoing: outgoing, state: Offline, ListenPort: listenPort}
 	p.peerManager = pm
 	p.logger = peerLogger.WithFields(log.Fields{
@@ -196,7 +293,8 @@ func (pm *PeerManager) SpawnPeer(config *Configuration, address string, outgoing
 		"listenPort": p.ListenPort,
 		"outgoing":   p.Outgoing,
 	})
-	p.config = config
+	p.config = pm.config
+	p.ListenPort = p.config.ListenPort // assume they listen on same port we do
 	p.stop = make(chan interface{}, 1)
 	p.incoming = make(chan *Parcel, StandardChannelSize)
 	p.Hash = address + ":" + listenPort // TODO make this a hash
@@ -223,9 +321,14 @@ func (pm *PeerManager) addPeer(peer *Peer) {
 	}
 }
 
+func (pm *PeerManager) banPeer(peer *Peer) {
+	pm.removePeer(peer)
+}
+
 func (pm *PeerManager) removePeer(peer *Peer) {
 	pm.peerMutex.Lock()
 	defer pm.peerMutex.Unlock()
+	peer.GoOffline()
 	pm.peerByHash.Remove(peer)
 	delete(pm.peerByIP[peer.Address], peer.Hash)
 }
@@ -251,24 +354,14 @@ func (pm *PeerManager) HandleIncoming(con net.Conn) {
 		}
 	}
 
-	p := pm.SpawnPeer(pm.config, ip, false, "0")
-	p.StartWithActiveConnection(con) // peer is online
+	p := pm.SpawnPeer(ip, false, "0") // create AND ADD a peer
+	p.StartWithActiveConnection(con)  // peer is online
 
 	//c := NewConnection(con, pm.config)
 
 	// TODO check if special
 	// TODO check if incoming is maxed out
 	// TODO add peer
-
-	/*
-		if ok, err := c.canConnectTo(conn); !ok {
-			connLogger.Infof("Rejecting new connection request: %s", err)
-			_ = conn.Close()
-			continue
-		}
-
-		c.AddPeer(conn) // Sends command to add the peer to the peers list
-		connLogger.Infof("Accepting new incoming connection")*/
 }
 
 func (pm *PeerManager) Broadcast(parcel *Parcel, full bool) {
@@ -290,7 +383,7 @@ func (pm *PeerManager) Broadcast(parcel *Parcel, full bool) {
 }
 
 // filteredOutgoing generates a subset of peers that we can dial and
-// are not already connected
+// are not already connected to
 func (pm *PeerManager) filteredOutgoing() []*Peer {
 	var filtered []*Peer
 	pm.peerMutex.RLock()
@@ -304,10 +397,23 @@ func (pm *PeerManager) filteredOutgoing() []*Peer {
 	return filtered
 }
 
+func (pm *PeerManager) filteredSharing() []*Peer {
+	var filtered []*Peer
+	pm.peerMutex.RLock()
+	for _, p := range pm.peerByHash {
+		if !p.IsSpecial() && p.QualityScore >= pm.config.MinimumQualityScore {
+			filtered = append(filtered, p)
+		}
+	}
+	pm.peerMutex.RUnlock()
+
+	return filtered
+}
+
 // getOutgoingSelection creates a subset of total connectable peers by getting
 // as much prefix variation as possible
 //
-// takes the input and spreads peers out over n equally sized buckets based on their
+// Takes the input and spreads peers out over n equally sized buckets based on their
 // ipv4 prefix, then iterates over those buckets and removes a random peer from each
 // one until it has enough
 func (pm *PeerManager) getOutgoingSelection(filtered []*Peer, wanted int) []*Peer {
@@ -370,6 +476,9 @@ func (pm *PeerManager) selectRandomPeers(count uint) []*Peer {
 	return peers[:count]
 }
 
+// ToPeer sends a parcel to a single peer, specified by their peer hash
+//
+// If the hash is empty, a random connected peer will be chosen
 func (pm *PeerManager) ToPeer(hash string, parcel *Parcel) {
 	if hash == "" {
 		if random := pm.selectRandomPeers(1); len(random) > 0 {

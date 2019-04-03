@@ -128,6 +128,12 @@ func (c *Controller) Stop() {
 	c.peerManager.Stop()
 }
 
+func (c *Controller) CreateParcel(pType ParcelCommandType, payload []byte) *Parcel {
+	parcel := NewParcel(c.Config.Network, payload)
+	parcel.Header.Type = pType
+	return parcel
+}
+
 // listenLoop listens for incoming TCP connections and passes them off to peer manager
 func (c *Controller) listenLoop() {
 	c.logger.Debug("Controller.listenLoop() starting up")

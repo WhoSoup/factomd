@@ -32,6 +32,9 @@ type Configuration struct {
 	Outgoing uint
 	// Incoming is the number of incoming connections this node is willing to accept
 	Incoming uint
+	// PeerShareAmount is the number of peers we share
+	PeerShareAmount     uint
+	MinimumQualityScore int32
 
 	// Fanout controls how many random peers are selected for propagating messages
 	// Higher values increase fault tolerance but also increase network congestion
@@ -60,7 +63,7 @@ type Configuration struct {
 	// leave blank to bind to all
 	ListenIP string
 	// ListenPort is the port to listen to incoming tcp connections on
-	ListenPort uint
+	ListenPort string
 	// ListenLimit is the lockout period of accepting connections from a single
 	// ip after having a successful connection from that ip
 	ListenLimit time.Duration
@@ -99,12 +102,14 @@ func DefaultP2PConfiguration() (c *Configuration) {
 	c.Outgoing = 32
 	c.Incoming = 150
 	c.Fanout = 16
+	c.PeerShareAmount = 4 * c.Outgoing // legacy math
+	c.MinimumQualityScore = 20
 
 	c.TrustedOnly = false
 	c.RefuseIncoming = false
 
 	c.ListenIP = "" // bind to all
-	c.ListenPort = 8108
+	c.ListenPort = "8108"
 	c.ListenLimit = time.Second
 	c.PingInterval = time.Second * 15
 	c.RedialInterval = time.Second * 20

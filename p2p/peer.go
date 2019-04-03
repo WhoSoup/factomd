@@ -74,6 +74,10 @@ func (p *Peer) String() string {
 	return fmt.Sprintf("%s %s:%s", p.Hash, p.Address, p.ListenPort)
 }
 
+func (p *Peer) ConnectAddress() string {
+	return fmt.Sprintf("%s:%s", p.Address, p.ListenPort)
+}
+
 func (p *Peer) StartToDial() {
 	if !p.CanDial() {
 		p.logger.Errorf("Attempted to connect to a peer with no remote listen port")
@@ -149,7 +153,7 @@ func (p *Peer) Send(parcel *Parcel) {
 }
 
 func (p *Peer) CanDial() bool {
-	return p.ListenPort != "0" && p.connectionAttemptCount < p.config.RedialAttempts
+	return p.connectionAttemptCount < p.config.RedialAttempts
 }
 
 func (p *Peer) IsOnline() bool {
@@ -221,6 +225,27 @@ func (p *Peer) Init(address string, port string, quality int32, peerType PeerTyp
 	p.Source = map[string]time.Time{}
 	p.Network = CurrentNetwork
 	return p
+}
+
+// Better compares a peer to another peer to determine which one we
+// would rather keep
+//
+// Prefers to keep peers that are online or connecting over peers that are not
+// but if both are in the same state, it uses qualityscore
+func (p *Peer) Better(other *Peer) bool {
+	if p.IsSpecial() && !other.IsSpecial() {
+		return true
+	}
+
+	if !p.IsOffline() && other.IsOffline() { // other is offline
+		return true
+	}
+
+	if p.IsOnline() && !other.IsOnline() { // other is connecting
+		return true
+	}
+
+	return p.QualityScore > other.QualityScore
 }
 
 func (p *Peer) generatePeerHash() {
