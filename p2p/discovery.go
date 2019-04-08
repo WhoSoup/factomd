@@ -239,6 +239,9 @@ func (d *Discovery) GetOutgoingPeers() []Peer {
 
 	buckets := make([][]Peer, wanted)
 	bucketSize := uint32(4294967295/uint32(wanted)) + 1 // 33554432 for wanted=128
+	if bucketSize == 0 {
+		bucketSize = 4294967295
+	}
 
 	// distribute peers over n buckets
 	for _, peer := range peerPool {
