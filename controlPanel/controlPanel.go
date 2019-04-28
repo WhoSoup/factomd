@@ -19,8 +19,8 @@ import (
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
 	"github.com/FactomProject/factomd/controlPanel/files"
-	"github.com/FactomProject/factomd/p2p"
 	"github.com/FactomProject/factomd/state"
+	"github.com/WhoSoup/factom-p2p"
 )
 
 // Initiates control panel variables and controls the http requests
@@ -420,9 +420,9 @@ func factomdQuery(item string, value string, batchQueried bool) []byte {
 		}
 		return data
 	case "disconnect":
-		hash := ""
+		hash := value
 		if len(value) > 0 {
-			hash = hashPeerAddress(value)
+			//hash = hashPeerAddress(value)
 		}
 		DisplayStateMutex.RLock()
 		CPS := DisplayState.ControlPanelSetting

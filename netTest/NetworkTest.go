@@ -17,7 +17,7 @@ import (
 	"github.com/FactomProject/factomd/common/messages"
 	"github.com/FactomProject/factomd/common/primitives"
 	"github.com/FactomProject/factomd/engine"
-	"github.com/FactomProject/factomd/p2p"
+	"github.com/WhoSoup/factom-p2p"
 )
 
 var p2pProxy *engine.P2PProxy

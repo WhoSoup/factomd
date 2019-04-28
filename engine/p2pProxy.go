@@ -14,7 +14,7 @@ import (
 	"github.com/FactomProject/factomd/common/constants"
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
-	"github.com/FactomProject/factomd/p2p"
+	"github.com/WhoSoup/factom-p2p"
 
 	"github.com/FactomProject/factomd/common/messages/msgsupport"
 	log "github.com/sirupsen/logrus"

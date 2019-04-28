@@ -25,10 +25,10 @@ import (
 	"github.com/FactomProject/factomd/controlPanel"
 	"github.com/FactomProject/factomd/database/leveldb"
 	"github.com/FactomProject/factomd/elections"
-	"github.com/FactomProject/factomd/p2p"
 	"github.com/FactomProject/factomd/state"
 	"github.com/FactomProject/factomd/util"
 	"github.com/FactomProject/factomd/wsapi"
+	"github.com/WhoSoup/factom-p2p"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -375,6 +375,9 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 
 	ci := p2p.DefaultP2PConfiguration()
 	connectionMetricsChannel := make(chan map[string]p2p.PeerMetrics, 5000)
+	ci.PeerIPLimitOutgoing = 1
+	ci.NodeID = 124323523525
+	ci.BindIP = "192.168.0.10"
 
 	if p.EnableNet {
 		nodeName := fnodes[0].State.FactomNodeName

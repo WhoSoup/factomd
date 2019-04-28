@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FactomProject/factomd/p2p"
+	"github.com/WhoSoup/factom-p2p"
 )
 
 var AllConnections *ConnectionsMap
@@ -224,7 +224,7 @@ func (cm *ConnectionsMap) SortedConnections() ConnectionInfoArray {
 		} else {
 			item.Connection = *newCon
 			item.ConnectionTimeFormatted = FormatDuration(newCon.Connected)
-			item.Hash = hashPeerAddress(key)
+			item.Hash = hashPeerAddress(item.Connection.Hash)
 			item.PeerHash = key
 		}
 		item.Connected = true
@@ -238,7 +238,7 @@ func (cm *ConnectionsMap) SortedConnections() ConnectionInfoArray {
 		} else {
 			item.Connection = *newCon
 			item.ConnectionTimeFormatted = FormatDuration(newCon.Connected)
-			item.Hash = hashPeerAddress(key)
+			item.Hash = hashPeerAddress(item.Connection.Hash)
 			item.PeerHash = key
 		}
 		item.Connected = false

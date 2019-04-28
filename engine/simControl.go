@@ -26,8 +26,8 @@ import (
 	"github.com/FactomProject/factomd/common/primitives"
 	"github.com/FactomProject/factomd/controlPanel"
 	elections2 "github.com/FactomProject/factomd/elections"
-	"github.com/FactomProject/factomd/p2p"
 	"github.com/FactomProject/factomd/wsapi"
+	"github.com/WhoSoup/factom-p2p"
 )
 
 var _ = fmt.Print
