@@ -50,7 +50,7 @@ var _ = fmt.Print
 type State struct {
 	Logger            *log.Entry
 	IsRunning         bool
-	NetworkController *p2p.Controller
+	NetworkController *p2p.Network
 	Salt              interfaces.IHash
 	Cfg               interfaces.IFactomConfig
 	ConfigFilePath    string // $HOME/.factom/m2/factomd.conf by default
@@ -2927,7 +2927,7 @@ func (s *State) updateNetworkControllerConfig() {
 		panic(fmt.Sprintf("Invalid Network: %s", s.Network))
 	}
 
-	s.NetworkController.ReloadSpecialPeers(newPeersConfig)
+	s.NetworkController.ParseSpecial(newPeersConfig)
 }
 
 // Check and Add a hash to the network replay filter

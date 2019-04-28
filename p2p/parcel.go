@@ -1,18 +1,16 @@
-// Copyright 2017 Factom Foundation
-// Use of this source code is governed by the MIT
-// license that can be found in the LICENSE file.
-
 package p2p
 
 import (
-	"bytes"
 	"fmt"
 	"hash/crc32"
 
 	log "github.com/sirupsen/logrus"
 )
 
-var parcelLogger = packageLogger.WithField("subpack", "connection")
+var (
+	crcTable     = crc32.MakeTable(crc32.Koopman)
+	parcelLogger = packageLogger.WithField("subpack", "connection")
+)
 
 // Parcel is the atomic level of communication for the p2p network.  It contains within it the necessary info for
 // the networking protocol, plus the message that the Application is sending.
@@ -31,8 +29,8 @@ type ParcelHeader struct {
 	Length      uint32            // 4 bytes - length of the payload (that follows this header) in bytes
 	TargetPeer  string            // ? bytes - "" or nil for broadcast, otherwise the destination peer's hash.
 	Crc32       uint32            // 4 bytes - data integrity hash (of the payload itself.)
-	PartNo      uint16            // 2 bytes - in case of multipart parcels, indicates which part this corresponds to, otherwise should be 0
-	PartsTotal  uint16            // 2 bytes - in case of multipart parcels, indicates the total number of parts that the receiver should expect
+	_           uint16            // 2 bytes - in case of multipart parcels, indicates which part this corresponds to, otherwise should be 0
+	_           uint16            // 2 bytes - in case of multipart parcels, indicates the total number of parts that the receiver should expect
 	NodeID      uint64
 	PeerAddress string // address of the peer set by connection to know who sent message (for tracking source of other peers)
 	PeerPort    string // port of the peer , or we are listening on
@@ -66,83 +64,6 @@ var CommandStrings = map[ParcelCommandType]string{
 	TypeMessagePart:  "MessagePart",   // Application level message that was split into multiple parts
 }
 
-// MaxPayloadSize is the maximum bytes a message can be at the networking level.
-const MaxPayloadSize = 1000000000
-
-func NewParcel(network NetworkID, payload []byte) *Parcel {
-	header := new(ParcelHeader).Init(network)
-	header.AppHash = "NetworkMessage"
-	header.AppType = "Network"
-	parcel := new(Parcel).Init(*header)
-	parcel.Payload = payload
-	parcel.UpdateHeader() // Updates the header with info about payload.
-	return parcel
-}
-
-func ParcelsForPayload(network NetworkID, payload []byte) []Parcel {
-	parcelCount := (len(payload) / MaxPayloadSize) + 1
-	parcels := make([]Parcel, parcelCount)
-
-	for i := 0; i < parcelCount; i++ {
-		start := i * MaxPayloadSize
-		next := (i + 1) * MaxPayloadSize
-		var end int
-		if next < len(payload) {
-			end = next
-		} else {
-			end = len(payload)
-		}
-		parcel := NewParcel(network, payload[start:end])
-		parcel.Header.Type = TypeMessagePart
-		parcel.Header.PartNo = uint16(i)
-		parcel.Header.PartsTotal = uint16(parcelCount)
-		parcels[i] = *parcel
-	}
-
-	return parcels
-}
-
-func ReassembleParcel(parcels []*Parcel) *Parcel {
-	var payload bytes.Buffer
-
-	for _, parcel := range parcels {
-		payload.Write(parcel.Payload)
-	}
-
-	// create a new message parcel from the reassembled payload, but
-	// copy all the relevant header fields from one of the original
-	// messages
-	origHeader := parcels[0].Header
-
-	assembledParcel := NewParcel(origHeader.Network, payload.Bytes())
-	assembledParcel.Header.NodeID = origHeader.NodeID
-	assembledParcel.Header.Type = TypeMessage
-	assembledParcel.Header.TargetPeer = origHeader.TargetPeer
-	assembledParcel.Header.PeerAddress = origHeader.PeerAddress
-	assembledParcel.Header.PeerPort = origHeader.PeerPort
-
-	return assembledParcel
-}
-
-func (p *ParcelHeader) Init(network NetworkID) *ParcelHeader {
-	p.Network = network
-	p.Version = ProtocolVersion
-	p.Type = TypeMessage
-	p.TargetPeer = ""              // initially no target
-	p.PeerPort = NetworkListenPort // store our listening port
-	return p
-}
-
-func (p *Parcel) Init(header ParcelHeader) *Parcel {
-	p.Header = header
-	return p
-}
-
-func (p *Parcel) UpdateHeader() {
-	p.Header.Crc32 = crc32.Checksum(p.Payload, CRCKoopmanTable)
-	p.Header.Length = uint32(len(p.Payload))
-}
-
 func (p *Parcel) LogEntry() *log.Entry {
 	return parcelLogger.WithFields(log.Fields{
 		"network":     p.Header.Network.String(),
@@ -153,12 +74,56 @@ func (p *Parcel) LogEntry() *log.Entry {
 		"length":      p.Header.Length,
 		"target_peer": p.Header.TargetPeer,
 		"crc32":       p.Header.Crc32,
-		"node_id":     p.Header.NodeID,
-		"part_no":     p.Header.PartNo + 1,
-		"parts_total": p.Header.PartsTotal,
+		//"node_id":     p.Header.NodeID,
 	})
 }
 
 func (p *Parcel) MessageType() string {
-	return (fmt.Sprintf("[%s]", CommandStrings[p.Header.Type]))
+	return fmt.Sprintf("[%s]", CommandStrings[p.Header.Type])
+}
+
+func (p *Parcel) String() string {
+	return fmt.Sprintf("[%s] %dB v%d", CommandStrings[p.Header.Type], p.Header.Length, p.Header.Version)
+}
+
+func NewParcel(command ParcelCommandType, payload []byte) *Parcel {
+	parcel := new(Parcel)
+	parcel.Header = ParcelHeader{ // the header information will get filled more when sending
+		Type:    command,
+		AppHash: "NetworkMessage",
+		AppType: "Network"}
+	parcel.SetPayload(payload)
+	return parcel
+}
+
+func (p *Parcel) SetPayload(payload []byte) {
+	p.Payload = payload
+	p.Header.Crc32 = crc32.Checksum(p.Payload, crcTable)
+	p.Header.Length = uint32(len(p.Payload))
+}
+
+func (p *Parcel) Valid() error {
+	if p == nil {
+		return fmt.Errorf("nil parcel")
+	}
+
+	head := p.Header
+	if head.Version == 0 {
+		return fmt.Errorf("invalid version")
+	}
+
+	if head.Type >= ParcelCommandType(len(CommandStrings)) {
+		return fmt.Errorf("unknown parcel type %d", head.Type)
+	}
+
+	if head.Length != uint32(len(p.Payload)) {
+		return fmt.Errorf("length in header does not match payload")
+	}
+
+	csum := crc32.Checksum(p.Payload, crcTable)
+	if csum != head.Crc32 {
+		return fmt.Errorf("invalid checksum")
+	}
+
+	return nil
 }

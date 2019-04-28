@@ -1,13 +1,11 @@
-// Copyright 2017 Factom Foundation
-// Use of this source code is governed by the MIT
-// license that can be found in the LICENSE file.
-
 package p2p
 
 import (
+	"encoding/gob"
 	"fmt"
-	"math/rand"
 	"net"
+	"strconv"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -15,198 +13,328 @@ import (
 
 var peerLogger = packageLogger.WithField("subpack", "peer")
 
-// Data structures and functions related to peers (eg other nodes in the network)
-
+// Peer is an active connection to an endpoint in the network
 type Peer struct {
-	QualityScore int32     // 0 is neutral quality, negative is a bad peer.
-	Address      string    // Must be in form of x.x.x.x
-	Port         string    // Must be in form of xxxx
-	NodeID       uint64    // a nonce to distinguish multiple nodes behind one IP address
-	Hash         string    // This is more of a connection ID than hash right now.
-	Location     uint32    // IP address as an int.
-	Network      NetworkID // The network this peer reference lives on.
-	Type         uint8
-	Connections  int                  // Number of successful connections.
-	LastContact  time.Time            // Keep track of how long ago we talked to the peer.
-	Source       map[string]time.Time // source where we heard from the peer.
+	net  *Network
+	conn net.Conn
+	//handshake Handshake
+
+	// current state
+	IsIncoming bool
+
+	stopper      sync.Once
+	stop         chan bool
+	stopDelivery chan bool
+
+	lastPeerRequest time.Time
+	peerShareAsk    bool
+	lastPeerSend    time.Time
+	send            ParcelChannel
+	error           chan error
+	disconnect      chan *Peer
+
+	encoder *gob.Encoder
+	decoder *gob.Decoder
+
+	connectionAttempt      time.Time
+	connectionAttemptCount uint
+
+	Seed bool
+
+	IP     IP
+	NodeID uint64 // a nonce to distinguish multiple nodes behind one IP address
+	Hash   string // This is more of a connection ID than hash right now.
+
+	// Metrics
+	metricsMtx      sync.RWMutex
+	Connected       time.Time
+	QualityScore    int32     // 0 is neutral quality, negative is a bad peer.
+	LastReceive     time.Time // Keep track of how long ago we talked to the peer.
+	LastSend        time.Time // Keep track of how long ago we talked to the peer.
+	ParcelsSent     uint64
+	ParcelsReceived uint64
+	BytesSent       uint64
+	BytesReceived   uint64
 
 	// logging
 	logger *log.Entry
 }
 
-const (
-	RegularPeer        uint8 = iota
-	SpecialPeerConfig        // special peer defined in the config file
-	SpecialPeerCmdLine       // special peer defined via the cmd line params
-)
+type PeerError struct {
+	Peer *Peer
+	err  error
+}
 
-func (p *Peer) Init(address string, port string, quality int32, peerType uint8, connections int) *Peer {
+func NewPeer(net *Network, disconnect chan *Peer) *Peer {
+	p := &Peer{}
+	p.net = net
+	p.disconnect = disconnect
 
 	p.logger = peerLogger.WithFields(log.Fields{
-		"address":  address,
-		"port":     port,
-		"peerType": peerType,
+		"node":    net.conf.NodeName,
+		"hash":    p.Hash,
+		"address": p.IP.Address,
+		"Port":    p.IP.Port,
+		//"version": p.handshake.Version,
 	})
-	if net.ParseIP(address) == nil {
-		ipAddress, err := net.LookupHost(address)
-		if err != nil {
-			p.logger.Errorf("Init: LookupHost(%v) failed. %v ", address, err)
-			// is there a way to abandon this peer at this point? -- clay
-		} else {
-			address = ipAddress[0]
-		}
-	}
+	p.stop = make(chan bool, 1)
+	p.stopDelivery = make(chan bool, 1)
 
-	p.Address = address
-	p.Port = port
-	p.QualityScore = quality
-	p.generatePeerHash()
-	p.Type = peerType
-	p.Location = p.LocationFromAddress()
-	p.Source = map[string]time.Time{}
-	p.Network = CurrentNetwork
+	p.logger.Debugf("Creating blank peer")
 	return p
 }
 
-func (p *Peer) generatePeerHash() {
-	p.Hash = fmt.Sprintf("%s:%s %x", p.Address, p.Port, rand.Int63())
-}
+func (p *Peer) StartWithHandshakeV10(ip IP, con net.Conn, incoming bool) bool {
+	tmplogger := p.logger.WithField("addr", ip.Address)
+	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
+	handshake := Handshake{
+		NodeID:  p.net.conf.NodeID,
+		Port:    p.net.conf.ListenPort,
+		Version: p.net.conf.ProtocolVersion,
+		Network: p.net.conf.Network}
 
-func (p *Peer) AddressPort() string {
-	return p.Address + ":" + p.Port
-}
+	p.decoder = gob.NewDecoder(con)
+	p.encoder = gob.NewEncoder(con)
+	con.SetWriteDeadline(timeout)
+	con.SetReadDeadline(timeout)
+	err := p.encoder.Encode(handshake)
 
-func (p *Peer) PeerIdent() string {
-	return p.Hash[0:12] + "-" + p.Address + ":" + p.Port
-}
-
-func (p *Peer) PeerFixedIdent() string {
-	address := fmt.Sprintf("%16s", p.Address)
-	return p.Hash[0:12] + "-" + address + ":" + p.Port
-}
-
-func (p *Peer) PeerLogFields() log.Fields {
-	return log.Fields{
-		"address":   p.Address,
-		"port":      p.Port,
-		"peer_type": p.PeerTypeString(),
-	}
-}
-
-// gets the last source where this peer was seen
-func (p *Peer) LastSource() (result string) {
-	var maxTime time.Time
-
-	for source, lastSeen := range p.Source {
-		if lastSeen.After(maxTime) {
-			maxTime = lastSeen
-			result = source
-		}
-	}
-
-	return
-}
-
-// TODO Hadn't considered IPV6 address support.
-// TODO Need to audit all the net code to check IPv6 addresses
-// Here's an IPv6 conversion:
-// Ref: http://stackoverflow.com/questions/23297141/golang-net-ip-to-ipv6-from-mysql-as-decimal39-0-conversion
-// func ipv6ToInt(IPv6Addr net.IP) *big.Int {
-//     IPv6Int := big.NewInt(0)
-//     IPv6Int.SetBytes(IPv6Addr)
-//     return IPv6Int
-// }
-// Problem is we're working with string addresses, may never have made a connection.
-// TODO - we might have a DNS address, not iP address and need to resolve it!
-// locationFromAddress converts the peers address into a uint32 "location" numeric
-func (p *Peer) LocationFromAddress() (location uint32) {
-	location = 0
-	// Split the IPv4 octets
-	ip := net.ParseIP(p.Address)
-	if ip == nil {
-		ipAddress, err := net.LookupHost(p.Address)
-		if err != nil {
-			p.logger.Debugf("LocationFromAddress(%v) failed. %v ", p.Address, err)
-			p.logger.Debugf("Invalid Peer Address: %v", p.Address)
-			p.logger.Debugf("Peer: %s has Location: %d", p.Hash, location)
-			return 0 // We use location on 0 to say invalid
-		}
-		p.Address = ipAddress[0]
-		ip = net.ParseIP(p.Address)
-	}
-	if len(ip) == 16 { // If we got back an IP6 (16 byte) address, use the last 4 byte
-		ip = ip[12:]
-	}
-	// Turn into uint32
-	location += uint32(ip[0]) << 24
-	location += uint32(ip[1]) << 16
-	location += uint32(ip[2]) << 8
-	location += uint32(ip[3])
-	p.logger.Debugf("peer", "Peer: %s has Location: %d", p.Hash, location)
-	return location
-}
-
-func (p *Peer) IsSamePeerAs(netAddress net.Addr) bool {
-	address, _, err := net.SplitHostPort(netAddress.String())
 	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
+		con.Close()
 		return false
 	}
-	return address == p.Address
+
+	err = p.decoder.Decode(&handshake)
+	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
+		con.Close()
+		return false
+	}
+
+	err = handshake.Verify(p.net.conf.NodeID, p.net.conf.ProtocolVersionMinimum, p.net.conf.Network)
+	if err != nil {
+		tmplogger.WithError(err).Debug("Handshake failed")
+		con.Close()
+		return false
+	}
+
+	ip.Port = handshake.Port
+	//p.handshake = handshake
+	p.IP = ip
+	p.NodeID = handshake.NodeID
+	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
+	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.error = make(chan error, 10)
+	p.IsIncoming = incoming
+	p.conn = con
+	p.Connected = time.Now()
+
+	go p.sendLoop()
+	go p.readLoop()
+
+	return true
 }
 
-// merit increases a peers reputation
-func (p *Peer) merit() {
-	if 2147483000 > p.QualityScore {
+func (p *Peer) StartWithHandshake(ip IP, con net.Conn, incoming bool) bool {
+	tmplogger := p.logger.WithField("addr", ip.Address)
+	timeout := time.Now().Add(p.net.conf.HandshakeTimeout)
+	request := NewParcel(TypePeerRequest, []byte("Peer Request"))
+	request.Header.Version = p.net.conf.ProtocolVersion
+	request.Header.Network = p.net.conf.Network
+	request.Header.PeerPort = p.net.conf.ListenPort
+
+	p.decoder = gob.NewDecoder(con)
+	p.encoder = gob.NewEncoder(con)
+	con.SetWriteDeadline(timeout)
+	con.SetReadDeadline(timeout)
+	err := p.encoder.Encode(request)
+
+	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to send handshake to incoming connection")
+		con.Close()
+		return false
+	}
+
+	err = p.decoder.Decode(&request)
+	if err != nil {
+		tmplogger.WithError(err).Debugf("Failed to read handshake from incoming connection")
+		con.Close()
+		return false
+	}
+
+	failfunc := func(err error) bool {
+		tmplogger.WithError(err).Debug("Handshake failed")
+		con.Close()
+		return false
+	}
+
+	h := request.Header
+	if h.NodeID == p.net.conf.NodeID {
+		return failfunc(fmt.Errorf("connected to ourselves"))
+	}
+
+	if h.Version < p.net.conf.ProtocolVersionMinimum {
+		return failfunc(fmt.Errorf("version %d is below the minimum", h.Version))
+	}
+
+	if h.Network != p.net.conf.Network {
+		return failfunc(fmt.Errorf("wrong network id %x", h.Network))
+	}
+
+	port, err := strconv.Atoi(h.PeerPort)
+	if err != nil {
+		return failfunc(fmt.Errorf("unable to parse port %s: %v", h.PeerPort, err))
+	}
+
+	if port < 1 || port > 65535 {
+		return failfunc(fmt.Errorf("given port out of range: %d", port))
+	}
+
+	ip.Port = h.PeerPort
+	//p.handshake = handshake
+	p.IP = ip
+	p.NodeID = h.NodeID
+	p.Hash = fmt.Sprintf("%s:%s %016x", ip.Address, ip.Port, p.NodeID)
+	p.send = NewParcelChannel(p.net.conf.ChannelCapacity)
+	p.error = make(chan error, 10)
+	p.IsIncoming = incoming
+	p.conn = con
+	p.Connected = time.Now()
+
+	if !p.deliver(request) {
+		tmplogger.Error("failed to deliver handshake to peermanager")
+		return false
+	}
+
+	go p.sendLoop()
+	go p.readLoop()
+
+	return true
+}
+
+// Stop disconnects the peer from its active connection
+func (p *Peer) Stop(andRemove bool) {
+	p.stopper.Do(func() {
+		p.logger.Debug("Stopping peer")
+		sc := p.send
+
+		p.send = nil
+		p.error = nil
+
+		p.stop <- true
+		p.stopDelivery <- true
+
+		if p.conn != nil {
+			p.conn.Close()
+		}
+
+		close(sc)
+
+		if andRemove {
+			p.net.peerManager.peerDisconnect <- p
+		}
+	})
+}
+
+func (p *Peer) String() string {
+	return p.Hash
+}
+
+func (p *Peer) Send(parcel *Parcel) {
+	parcel.Header.PeerPort = p.net.conf.ListenPort
+	parcel.Header.Network = p.net.conf.Network
+	parcel.Header.Version = p.net.conf.ProtocolVersion
+	p.send.Send(parcel)
+}
+
+func (p *Peer) quality(diff int32) int32 {
+	p.metricsMtx.Lock()
+	defer p.metricsMtx.Unlock()
+	p.QualityScore += diff
+	return p.QualityScore
+}
+
+func (p *Peer) readLoop() {
+	defer p.conn.Close() // close connection on fatal error
+	for {
+		var message Parcel
+
+		p.conn.SetReadDeadline(time.Now().Add(p.net.conf.ReadDeadline))
+		err := p.decoder.Decode(&message)
+		if err != nil {
+			p.logger.WithError(err).Debug("connection error (readLoop)")
+			p.Stop(false)
+			return
+		}
+
+		p.metricsMtx.Lock()
+		p.LastReceive = time.Now()
 		p.QualityScore++
+		p.ParcelsReceived++
+		p.BytesReceived += uint64(len(message.Payload))
+		p.metricsMtx.Unlock()
+
+		message.Header.TargetPeer = p.Hash
+
+		if !p.deliver(&message) {
+			return
+		}
 	}
 }
 
-// demerit decreases a peers reputation
-func (p *Peer) demerit() {
-	if -2147483000 < p.QualityScore {
-		//p.QualityScore--
+func (p *Peer) deliver(parcel *Parcel) bool {
+	select {
+	case p.net.peerParcel <- PeerParcel{Peer: p, Parcel: parcel}:
+	case <-p.stopDelivery:
+		return false
+	}
+	return true
+}
+
+// sendLoop listens to the Outgoing channel, pushing all data from there
+// to the tcp connection
+func (p *Peer) sendLoop() {
+	defer p.conn.Close() // close connection on fatal error
+	for {
+		select {
+		case <-p.stop:
+			return
+		case parcel := <-p.send:
+			if parcel == nil {
+				p.logger.Error("Received <nil> pointer")
+				continue
+			}
+
+			p.conn.SetWriteDeadline(time.Now().Add(p.net.conf.WriteDeadline))
+			err := p.encoder.Encode(parcel)
+			if err != nil { // no error is recoverable
+				p.logger.WithError(err).Debug("connection error (sendLoop)")
+				p.Stop(false)
+				return
+			}
+
+			p.metricsMtx.Lock()
+			p.ParcelsSent++
+			p.BytesSent += uint64(len(parcel.Payload))
+			p.LastSend = time.Now()
+			p.metricsMtx.Unlock()
+		}
 	}
 }
 
-func (p *Peer) IsSpecial() bool {
-	return p.Type == SpecialPeerConfig || p.Type == SpecialPeerCmdLine
-}
-
-func (p *Peer) PeerTypeString() string {
-	switch p.Type {
-	case RegularPeer:
-		return "regular"
-	case SpecialPeerConfig:
-		return "special_config"
-	case SpecialPeerCmdLine:
-		return "special_cmdline"
-	default:
-		return "unknown"
+func (p *Peer) GetMetrics() PeerMetrics {
+	p.metricsMtx.RLock()
+	defer p.metricsMtx.RUnlock()
+	return PeerMetrics{
+		Connected:       p.Connected,
+		LastReceive:     p.LastReceive,
+		LastSend:        p.LastSend,
+		BytesReceived:   p.BytesReceived,
+		BytesSent:       p.BytesSent,
+		ParcelsReceived: p.ParcelsReceived,
+		ParcelsSent:     p.ParcelsSent,
+		Incoming:        p.IsIncoming,
+		Hash:            p.Hash,
 	}
-}
-
-// sort.Sort interface implementation
-type PeerQualitySort []Peer
-
-func (p PeerQualitySort) Len() int {
-	return len(p)
-}
-func (p PeerQualitySort) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-func (p PeerQualitySort) Less(i, j int) bool {
-	return p[i].QualityScore < p[j].QualityScore
-}
-
-// sort.Sort interface implementation
-type PeerDistanceSort []Peer
-
-func (p PeerDistanceSort) Len() int {
-	return len(p)
-}
-func (p PeerDistanceSort) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-func (p PeerDistanceSort) Less(i, j int) bool {
-	return p[i].Location < p[j].Location
 }

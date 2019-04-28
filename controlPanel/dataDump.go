@@ -79,7 +79,7 @@ func SortedConnectionString() string {
 	arr := AllConnections.SortedConnections()
 	str := ""
 	for _, con := range arr {
-		str += fmt.Sprintf("Connected: %v, Hash:%s, State: %s\n", con.Connected, con.Hash[:8], con.Connection.ConnectionState)
+		str += fmt.Sprintf("Connected: %v, Hash:%s, State: %s\n", con.Connected, con.Hash[:8], "Online")
 	}
 	return str
 }
@@ -89,10 +89,10 @@ func AllConnectionsString() string {
 	con := AllConnections.GetConnectedCopy()
 	dis := AllConnections.GetDisconnectedCopy()
 	for key := range con {
-		str += fmt.Sprintf("   Connected - IP:%s, ST:%s\n", con[key].PeerAddress, con[key].ConnectionState)
+		str += fmt.Sprintf("   Connected - IP:%s, ST:%s\n", con[key].Hash, "Online")
 	}
 	for key := range dis {
-		str += fmt.Sprintf("Disconnected - IP:%s, ST:%s\n", dis[key].PeerAddress, dis[key].ConnectionState)
+		str += fmt.Sprintf("Disconnected - IP:%s, ST:%s\n", dis[key].Hash, "Online")
 	}
 	return str
 }

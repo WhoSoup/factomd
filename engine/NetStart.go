@@ -47,7 +47,7 @@ var fnodes []*FactomNode
 var networkpattern string
 var mLog = new(MsgLog)
 var p2pProxy *P2PProxy
-var p2pNetwork *p2p.Controller
+var p2pNetwork *p2p.Network
 var logPort string
 
 func GetFnodes() []*FactomNode {
@@ -196,7 +196,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 			fnode.State.ShutdownChan <- 0
 		}
 		if p.EnableNet {
-			p2pNetwork.NetworkStop()
+			p2pNetwork.Stop()
 		}
 		fmt.Print("Waiting...\r\n")
 		time.Sleep(3 * time.Second)
@@ -373,33 +373,32 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		panic("Invalid Network choice in Config File or command line. Choose MAIN, TEST, LOCAL, or CUSTOM")
 	}
 
-	connectionMetricsChannel := make(chan interface{}, p2p.StandardChannelSize)
-	p2p.NetworkDeadline = time.Duration(p.Deadline) * time.Millisecond
+	ci := p2p.DefaultP2PConfiguration()
+	connectionMetricsChannel := make(chan map[string]p2p.PeerMetrics, 5000)
 
 	if p.EnableNet {
 		nodeName := fnodes[0].State.FactomNodeName
 		if 0 < p.NetworkPortOverride {
 			networkPort = fmt.Sprintf("%d", p.NetworkPortOverride)
 		}
+		ci.NodeName = nodeName
+		ci.ListenPort = networkPort
+		ci.PeerFile = s.PeersFile
+		ci.Network = networkID
+		ci.SeedURL = seedURL
 
-		ci := p2p.ControllerInit{
-			NodeName:                 nodeName,
-			Port:                     networkPort,
-			PeersFile:                s.PeersFile,
-			Network:                  networkID,
-			Exclusive:                p.Exclusive,
-			ExclusiveIn:              p.ExclusiveIn,
-			SeedURL:                  seedURL,
-			ConfigPeers:              configPeers,
-			CmdLinePeers:             p.Peers,
-			ConnectionMetricsChannel: connectionMetricsChannel,
-		}
-		p2pNetwork = new(p2p.Controller).Init(ci)
+		p2pNetwork = p2p.NewNetwork(ci)
 		fnodes[0].State.NetworkController = p2pNetwork
-		p2pNetwork.StartNetwork()
+		p2pNetwork.Start()
+		p2pNetwork.ParseSpecial(configPeers)
 		p2pProxy = new(P2PProxy).Init(nodeName, "P2P Network").(*P2PProxy)
 		p2pProxy.FromNetwork = p2pNetwork.FromNetwork
 		p2pProxy.ToNetwork = p2pNetwork.ToNetwork
+
+		// connectionMetricsChannel
+		p2pNetwork.SetMetricsHook(func(data map[string]p2p.PeerMetrics) {
+			connectionMetricsChannel <- data
+		})
 
 		fnodes[0].Peers = append(fnodes[0].Peers, p2pProxy)
 		p2pProxy.StartProxy()
@@ -555,7 +554,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	launchPrometheus(9876)
 	// Start Package's prometheus
 	state.RegisterPrometheus()
-	p2p.RegisterPrometheus()
+	//p2p.RegisterPrometheus()
 	leveldb.RegisterPrometheus()
 	RegisterPrometheus()
 
@@ -631,6 +630,6 @@ func setupFirstAuthority(s *state.State) {
 func networkHousekeeping() {
 	for {
 		time.Sleep(1 * time.Second)
-		p2pProxy.SetWeight(p2pNetwork.GetNumberOfConnections())
+		p2pProxy.SetWeight(p2pNetwork.Total())
 	}
 }
