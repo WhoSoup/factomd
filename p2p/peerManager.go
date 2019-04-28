@@ -200,6 +200,9 @@ func (pm *peerManager) manageData() {
 			case TypeMessage:
 				// TODO ApplicationMessagesReceived++
 				pm.net.FromNetwork.Send(parcel)
+			case TypeMessagePart:
+				parcel.Header.Type = TypeMessage // TODO v9 hack
+				pm.net.FromNetwork.Send(parcel)
 			case TypePeerRequest:
 				if time.Since(peer.lastPeerSend) >= pm.net.conf.PeerRequestInterval {
 					peer.lastPeerSend = time.Now()
@@ -299,12 +302,21 @@ func (pm *peerManager) sharePeers(peer *Peer) {
 
 func (pm *peerManager) filteredSharing(peer *Peer) []PeerShare {
 	var filtered []PeerShare
+	src := make(map[string]time.Time)
 	for _, ip := range pm.endpoints.IPs() {
 		if ip != peer.IP {
 			filtered = append(filtered, PeerShare{
 				Address:      ip.Address,
 				Port:         ip.Port,
-				QualityScore: 1,
+				QualityScore: peer.QualityScore,
+				NodeID:       peer.NodeID,
+				Hash:         peer.Hash,
+				Location:     peer.IP.Location,
+				Network:      pm.net.conf.Network,
+				Type:         0,
+				Connections:  1,
+				LastContact:  peer.LastReceive,
+				Source:       src,
 			})
 		}
 	}
@@ -643,8 +655,8 @@ func (pm *peerManager) loadEndpoints() *Endpoints {
 		return nil
 	}
 
-	// invalid file
-	if eps.Bans == nil || eps.Ends == nil {
+	// decoding from a blank or invalid file
+	if eps.Ends == nil || eps.Bans == nil {
 		return NewEndpoints()
 	}
 
