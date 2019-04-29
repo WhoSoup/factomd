@@ -59,10 +59,10 @@ func (cm *ConnectionsMap) TallyTotals() {
 		peer := cons[key]
 		totals.BytesSentTotal += peer.BytesSent
 		totals.BytesReceivedTotal += peer.BytesReceived
-		totals.MessagesSent += peer.ParcelsSent
-		totals.MessagesReceived += peer.ParcelsReceived
+		totals.MessagesSent += peer.MessagesSent
+		totals.MessagesReceived += peer.MessagesReceived
 		count++
-		totalQuality += int32(peer.Quality)
+		totalQuality += int32(peer.PeerQuality)
 	}
 	if count == 0 {
 		totals.PeerQualityAvg = 0
@@ -73,8 +73,8 @@ func (cm *ConnectionsMap) TallyTotals() {
 		peer := dis[key]
 		totals.BytesSentTotal += peer.BytesSent
 		totals.BytesReceivedTotal += peer.BytesReceived
-		totals.MessagesSent += peer.ParcelsSent
-		totals.MessagesReceived += peer.ParcelsReceived
+		totals.MessagesSent += peer.MessagesSent
+		totals.MessagesReceived += peer.MessagesReceived
 	}
 
 	cm.Lock.Lock()
@@ -195,7 +195,7 @@ func (slice ConnectionInfoArray) Len() int {
 }
 
 func (slice ConnectionInfoArray) Less(i, j int) bool {
-	if slice[i].Connection.Connected.Before(slice[j].Connection.Connected) {
+	if slice[i].Connection.MomentConnected.Before(slice[j].Connection.MomentConnected) {
 		return true
 	}
 	return false
@@ -223,7 +223,7 @@ func (cm *ConnectionsMap) SortedConnections() ConnectionInfoArray {
 			continue
 		} else {
 			item.Connection = *newCon
-			item.ConnectionTimeFormatted = FormatDuration(newCon.Connected)
+			item.ConnectionTimeFormatted = FormatDuration(newCon.MomentConnected)
 			item.Hash = hashPeerAddress(item.Connection.Hash)
 			item.PeerHash = key
 		}
@@ -237,7 +237,7 @@ func (cm *ConnectionsMap) SortedConnections() ConnectionInfoArray {
 			continue
 		} else {
 			item.Connection = *newCon
-			item.ConnectionTimeFormatted = FormatDuration(newCon.Connected)
+			item.ConnectionTimeFormatted = FormatDuration(newCon.MomentConnected)
 			item.Hash = hashPeerAddress(item.Connection.Hash)
 			item.PeerHash = key
 		}

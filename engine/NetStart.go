@@ -7,7 +7,6 @@ package engine
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -358,7 +357,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 			panic("Please specify a custom network with -customnet=<something unique here>")
 		}
 		s.CustomNetworkID = p.CustomNet
-		networkID = p2p.NetworkID(binary.BigEndian.Uint32(p.CustomNet))
+		networkID = p2p.NewNetworkID(string(p.CustomNetName))
 		for i := range fnodes {
 			fnodes[i].State.CustomNetworkID = p.CustomNet
 		}
@@ -377,7 +376,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	connectionMetricsChannel := make(chan map[string]p2p.PeerMetrics, 5000)
 	ci.PeerIPLimitOutgoing = 1
 	ci.NodeID = 124323523525
-	ci.BindIP = "192.168.0.10"
+	//ci.BindIP = "192.168.0.10"
 
 	if p.EnableNet {
 		nodeName := fnodes[0].State.FactomNodeName
