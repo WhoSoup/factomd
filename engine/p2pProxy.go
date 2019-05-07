@@ -217,7 +217,6 @@ func (f *P2PProxy) ManageOutChannel() {
 			fmessage := data.(FactomMessage)
 			// Wrap it in a parcel and send it out channel ToNetwork.
 			parcel := p2p.NewMessage(fmessage.Message)
-			parcel.SetAppData(fmessage.AppHash, fmessage.AppType)
 			parcel.Address = fmessage.PeerHash
 			f.ToNetwork.Send(parcel)
 		default:
@@ -229,7 +228,7 @@ func (f *P2PProxy) ManageOutChannel() {
 // manageInChannel takes messages from the network and stuffs it in the f.BroadcastIn channel
 func (f *P2PProxy) ManageInChannel() {
 	for parcel := range f.FromNetwork.Reader() {
-		message := FactomMessage{Message: parcel.Payload, PeerHash: parcel.Address, AppHash: parcel.AppHash, AppType: parcel.AppType}
+		message := FactomMessage{Message: parcel.Payload, PeerHash: parcel.Address}
 		select {
 		case f.BroadcastIn <- message:
 			BroadInCastQueue.Inc()
