@@ -88,7 +88,9 @@ func init() {
 	flag.StringVar(&p.FactomHome, "factomhome", "", "Set the Factom home directory. The .factom folder will be placed here if set, otherwise it will default to $HOME")
 	flag.StringVar(&p.NodeName, "nodename", "", "Assign a name to the node")
 	flag.StringVar(&p.ControlPanelSetting, "controlpanelsetting", "", "Can set to 'disabled', 'readonly', or 'readwrite' to overwrite config file")
-
+	flag.StringVar(&p.P2PBindIP, "p2pBindIP", "", "Bind to a local interface for outgoing connections, leave blank to configure dynamically")
+	flag.UintVar(&p.P2PLimitOutgoing, "p2pLimitOutgoing", 5, "The maximum number of endpoints per ip address to connect to. set to 0 to only dial to special endpoints; default 5")
+	flag.UintVar(&p.P2PLimitIncoming, "p2pLimitIncoming", 5, "The maximum number of connections per ip address to accept. set to 0 to only accept special endpoints; default 5")
 }
 
 func ParseCmdLine(args []string) *FactomParams {

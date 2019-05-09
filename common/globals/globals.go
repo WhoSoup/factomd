@@ -73,4 +73,7 @@ type FactomParams struct {
 	WriteProcessedDBStates   bool // Write processed DBStates to debug file
 	NodeName                 string
 	FactomHome               string
+	P2PBindIP                string
+	P2PLimitOutgoing         uint
+	P2PLimitIncoming         uint
 }

@@ -373,10 +373,10 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	}
 
 	ci := p2p.DefaultP2PConfiguration()
-	connectionMetricsChannel := make(chan map[string]p2p.PeerMetrics, 5000)
-	ci.PeerIPLimitOutgoing = 1
-	ci.NodeID = 124323523525
-	//ci.BindIP = "192.168.0.10"
+	connectionMetricsChannel := make(chan map[string]p2p.PeerMetrics, 10)
+	ci.PeerIPLimitOutgoing = p.P2PLimitOutgoing
+	ci.PeerIPLimitIncoming = p.P2PLimitIncoming
+	ci.BindIP = p.P2PBindIP
 
 	if p.EnableNet {
 		nodeName := fnodes[0].State.FactomNodeName
