@@ -385,7 +385,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		}
 		ci.NodeName = nodeName
 		ci.ListenPort = networkPort
-		ci.PeerFile = s.PeersFile
+		ci.PersistFile = s.PeersFile
 		ci.Network = networkID
 		ci.SeedURL = seedURL
 
