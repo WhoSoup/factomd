@@ -2927,7 +2927,7 @@ func (s *State) updateNetworkControllerConfig() {
 		panic(fmt.Sprintf("Invalid Network: %s", s.Network))
 	}
 
-	s.NetworkController.ParseSpecial(newPeersConfig)
+	s.NetworkController.AddSpecial(newPeersConfig)
 }
 
 // Check and Add a hash to the network replay filter
