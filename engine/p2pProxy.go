@@ -123,13 +123,13 @@ func (f *P2PProxy) Send(msg interfaces.IMsg) error {
 		switch {
 		case !msg.IsPeer2Peer() && msg.IsFullBroadcast():
 			msgLogger.Debug("Sending full broadcast message")
-			message.PeerHash = p2p.FullBroadcastFlag
+			message.PeerHash = p2p.FullBroadcast
 		case !msg.IsPeer2Peer() && !msg.IsFullBroadcast():
 			msgLogger.Debug("Sending broadcast message")
-			message.PeerHash = p2p.BroadcastFlag
+			message.PeerHash = p2p.Broadcast
 		case msg.IsPeer2Peer() && 0 == len(message.PeerHash): // directed, with no direction of who to send it to
 			msgLogger.Debug("Sending directed message to a random peer")
-			message.PeerHash = p2p.RandomPeerFlag
+			message.PeerHash = p2p.RandomPeer
 		default:
 			msgLogger.Debugf("Sending directed message to: %s", message.PeerHash)
 		}
@@ -216,8 +216,7 @@ func (f *P2PProxy) ManageOutChannel() {
 		case FactomMessage:
 			fmessage := data.(FactomMessage)
 			// Wrap it in a parcel and send it out channel ToNetwork.
-			parcel := p2p.NewMessage(fmessage.Message)
-			parcel.Address = fmessage.PeerHash
+			parcel := p2p.NewMessage(fmessage.PeerHash, fmessage.Message)
 			f.ToNetwork.Send(parcel)
 		default:
 			f.logger.Errorf("Garbage on f.BrodcastOut. %+v", data)
