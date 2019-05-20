@@ -392,6 +392,12 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		p2pNetwork = p2p.NewNetwork(ci)
 		fnodes[0].State.NetworkController = p2pNetwork
 		p2pNetwork.Start()
+
+		os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "P2P Version", "2.0"))
+		os.Stderr.WriteString(fmt.Sprintf("%20s %d\n", "Preferred Protocol", ci.ProtocolVersion))
+		os.Stderr.WriteString(fmt.Sprintf("%20s %d\n", "Minimum Protocol", ci.ProtocolVersionMinimum))
+		os.Stderr.WriteString(fmt.Sprintf("%20s %v\n", "P2P Prometheus", ci.EnablePrometheus))
+
 		p2pNetwork.AddSpecial(configPeers)
 		p2pProxy = new(P2PProxy).Init(nodeName, "P2P Network").(*P2PProxy)
 		p2pProxy.FromNetwork = p2pNetwork.FromNetwork
