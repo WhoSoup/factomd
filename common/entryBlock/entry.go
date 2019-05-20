@@ -249,7 +249,7 @@ func (e *Entry) MarshalBinary() (rval []byte, err error) {
 		return nil, err
 	} else {
 		// 2 byte size of ExtIDs
-		if err := binary.Write(buf, binary.BigEndian, int16(len(ext))); err != nil {
+		if err = binary.Write(buf, binary.BigEndian, int16(len(ext))); err != nil {
 			return nil, err
 		}
 
