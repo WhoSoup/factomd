@@ -87,14 +87,14 @@ type Config struct {
 		DbNoFastBoot     bool   `def:"false"`
 		DbFastBootRate   int    `def:"1000" min:"1"`
 
-		P2PDisable        bool   `def:"false"`
-		P2PPeerFileSuffix bool   `def:"false"`
-		P2PPort           int    `def:"8108" min:"1"`
-		P2PSeed           string `def:"" f:"url"`
-		P2PFanout         int    `def:"16" min:"1"`
-		P2PSpecialPeer    string `def:"" f:"ipport" list:","`
-		P2PMode           string `def:"NORMAL" enum:"NORMAL,ACCEPT,REFUSE"`
-		P2PTimeout        int    `def:"300" f:"time"`
+		P2PDisable          bool   `def:"false"`
+		P2PPeerFileSuffix   bool   `def:"false"`
+		P2PPort             int    `def:"8108" min:"1"`
+		P2PSeed             string `def:"" f:"url"`
+		P2PFanout           int    `def:"16" min:"1"`
+		P2PSpecialPeers     string `def:"" f:"ipport" list:","`
+		P2PConnectionPolicy string `def:"NORMAL" enum:"NORMAL,ACCEPT,REFUSE"`
+		P2PTimeout          int    `def:"300" f:"time"`
 
 		LogLevel    string `def:"ERROR" enum:"DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY,NONE"`
 		LogPath     string `def:"database/Log" f:"path"`
