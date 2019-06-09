@@ -183,24 +183,17 @@ func LoadString(data string) (Config, error) {
 
 func parseConfig(file *ini.File) (Config, error) {
 	c := DefaultConfig()
-	baseType := reflect.TypeOf(c)
-	baseValue := reflect.ValueOf(&c)
-	for i := 0; i < baseType.NumField(); i++ {
-		cat := baseType.Field(i).Type
-		catVal := baseValue.Elem().Field(i)
-		for j := 0; j < cat.NumField(); j++ {
-			f := cat.Field(j)
-			v := catVal.Field(j)
-			if def, ok := f.Tag.Lookup("def"); ok {
-				err := set(v, def, f.Tag)
-				if err != nil {
-					panic(fmt.Sprintf("config.Config unable to set default for %s: %v", f.Name, err))
-				}
-			} else {
-				panic(fmt.Sprintf("config.Config struct has no \"def\" tag for variable %s", f.Name))
-			}
-		}
+
+	network := file.Section("Factomd").Key("Network").String()
+
+	if !fNetwork(network) {
+		return c, fmt.Errorf("Network name \"%s\" could not be parsed. Use alphanumeric characters and _ only", network)
 	}
+
+	apply(&c, func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
+
+		return nil
+	})
 	return c, nil
 }
 

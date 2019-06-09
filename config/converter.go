@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+var networkRegEx = regexp.MustCompile("^[a-zA-Z0-9_]+$") // also checks for blank
+
+func fNetwork(s string) bool {
+	return networkRegEx.MatchString(s)
+}
+
 var timeRegEx = regexp.MustCompile("^(\\d+)(s|m|h|d)?$")
 
 func fTime(s string) (int, error) {
@@ -35,7 +41,7 @@ func fTime(s string) (int, error) {
 	}
 }
 
-func enum(s string, set string) (string, bool) {
+func fEnum(s string, set string) (string, bool) {
 	val := strings.Split(strings.ToUpper(set), ",")
 	s = strings.ToUpper(strings.TrimSpace(s))
 	for _, v := range val {
@@ -66,9 +72,41 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 	case reflect.Bool:
 		target.SetBool(strings.ToLower(val) == "true")
 	case reflect.String:
-		target.SetString(val)
+		//
+		// ENUM
+		//
+		if set, ok := tag.Lookup("enum"); ok {
+			if choice, ok := fEnum(val, set); ok {
+				target.SetString(choice)
+			} else {
+				err = fmt.Errorf("%s not part of enum %s", val, set)
+			}
+		} else if sep, ok := tag.Lookup("list"); ok {
+			items := strings.Split(val, sep)
+			for _, i := range items {
+				i = strings.TrimSpace(i)
+
+			}
+		} else if f, ok := tag.Lookup("f"); ok {
+			switch f {
+			case "time":
+
+			default:
+				panic(fmt.Sprintf("could not find string handler %s", f))
+			}
+		} else {
+			target.SetString(val)
+		}
 	default:
 		err = fmt.Errorf("variable type \"%s\" does not have a handler in config/convert.go", target.Kind())
 	}
 	return
+}
+
+func fString(val string, f string) (string, bool) {
+	switch f {
+
+	default:
+		panic(fmt.Sprintf("f-tag method function handler for %s not found", f))
+	}
 }
