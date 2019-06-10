@@ -68,11 +68,11 @@ type Config struct {
 		ControlPanelName  string `def:""`
 		PprofExpose       bool   `def:"false"`
 		PprofPort         int    `def:"8090" min:"1" max:"65535"`
-		PprofMMR          int    `def:"524288" min:"0"`
+		PprofMPR          int    `def:"524288" min:"0"`
 		WebTLS            bool   `def:"false"`
 		WebTLSCertificate string `def:"" f:"path"`
 		WebTLSKey         string `def:"" f:"path"`
-		WebTLSAddress     string `def:"" list:","`
+		WebTLSHosts       string `def:"" list:","`
 		WebUsername       string `def:""`
 		WebPassword       string `def:""`
 		WebCORS           string `def:""`
