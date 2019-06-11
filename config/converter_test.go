@@ -89,3 +89,30 @@ func Test_enum(t *testing.T) {
 		})
 	}
 }
+
+func Test_fNetwork(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{"empty", args{""}, false},
+		{"main", args{"MAIN"}, true},
+		{"local", args{"LOCAL"}, true},
+		{"test", args{"TEST"}, true},
+		{"testnet", args{"fct_community_test"}, true},
+		{"alphanumeral", args{"f00b4r"}, true},
+		{"invalid", args{"abc%def"}, false},
+		{"invalid", args{""}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fNetwork(tt.args.s); got != tt.want {
+				t.Errorf("fNetwork() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

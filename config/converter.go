@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var networkRegEx = regexp.MustCompile("^[a-zA-Z0-9_]+$") // also checks for blank
+var networkRegEx = regexp.MustCompile("(?i)^[a-z0-9_]+$") // also checks for blank
 var timeRegEx = regexp.MustCompile("^(\\d+)(s|m|h|d)?$")
 var hex64RegEx = regexp.MustCompile("^[a-fA-F0-9]{64}$")
 var alphaRegEx = regexp.MustCompile("^[a-zA-Z0-9]*^")
