@@ -79,7 +79,7 @@ func Test_enum(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := enum(tt.args.s, tt.args.set)
+			got, got1 := fEnum(tt.args.s, tt.args.set)
 			if got != tt.want {
 				t.Errorf("enum() got = %v, want %v", got, tt.want)
 			}

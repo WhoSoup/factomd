@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -9,22 +10,25 @@ import (
 )
 
 var networkRegEx = regexp.MustCompile("^[a-zA-Z0-9_]+$") // also checks for blank
+var timeRegEx = regexp.MustCompile("^(\\d+)(s|m|h|d)?$")
+var hex64RegEx = regexp.MustCompile("^[a-fA-F0-9]{64}$")
+var alphaRegEx = regexp.MustCompile("^[a-zA-Z0-9]*^")
+var portRegEx = regexp.MustCompile("^[0-9]+$")
+var urlRegEx = regexp.MustCompile("(?i)^(https?|ftp)://[^\\s/$.?#].[^\\s]*$")
 
 func fNetwork(s string) bool {
 	return networkRegEx.MatchString(s)
 }
 
-var timeRegEx = regexp.MustCompile("^(\\d+)(s|m|h|d)?$")
-
 func fTime(s string) (int, error) {
 	t := timeRegEx.FindStringSubmatch(s)
 	if t == nil {
-		return 0, fmt.Errorf("Input must be a number followed by an optional 's' 'm' 'h' or 'd'")
+		return 0, fmt.Errorf("input must be a number followed by an optional 's' 'm' 'h' or 'd'")
 	}
 
 	v, err := strconv.Atoi(t[1])
 	if err != nil {
-		return 0, fmt.Errorf("Unable to convert %s to an integer: %v", t[1], err)
+		return 0, fmt.Errorf("unable to convert %s to an integer: %v", t[1], err)
 	}
 
 	switch t[2] {
@@ -56,7 +60,7 @@ func fEnum(s string, set string) (string, bool) {
 func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("Unable to convert \"%s\" to %s", val, target.Kind())
+			err = fmt.Errorf("unable to convert \"%s\" to %s: %v", val, target.Kind(), r)
 		}
 	}()
 
@@ -64,11 +68,25 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 
 	switch target.Kind() {
 	case reflect.Int:
-		v, err := strconv.Atoi(val)
-		if err != nil {
-			return err // local err
+		if f, ok := tag.Lookup("f"); ok {
+			switch f {
+			case "time":
+				time, e := fTime(val)
+				if e != nil {
+					err = e
+				} else {
+					target.SetInt(int64(time))
+				}
+			default:
+				panic(fmt.Sprintf("could not find int handler for type \"%s\"", f))
+			}
+		} else {
+			v, err := strconv.Atoi(val)
+			if err != nil {
+				return err // local err
+			}
+			target.SetInt(int64(v))
 		}
-		target.SetInt(int64(v))
 	case reflect.Bool:
 		target.SetBool(strings.ToLower(val) == "true")
 	case reflect.String:
@@ -89,10 +107,53 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 			}
 		} else if f, ok := tag.Lookup("f"); ok {
 			switch f {
+			case "url":
+				if val == "" || urlRegEx.MatchString(val) {
+					target.SetString(val)
+				} else {
+					err = fmt.Errorf("not a valid url")
+				}
+			case "path":
+				// TODO verify path
+				target.SetString(val)
+			case "hex64":
+				if hex64RegEx.MatchString(val) {
+					target.SetString(val)
+				} else {
+					err = fmt.Errorf("input %s is not a valid hexademical string with 64 characters", val)
+				}
 			case "time":
-
+				seconds, err := fTime(val)
+				if err != nil {
+					return err
+				}
+				target.SetInt(int64(seconds))
+			case "network":
+				if fNetwork(val) {
+					target.SetString(val)
+				} else {
+					err = fmt.Errorf("network name contains invalid characters. use alphanumeric and _ (underscore) only")
+				}
+			case "alpha":
+				if alphaRegEx.MatchString(val) {
+					target.SetString(val)
+				} else {
+					err = fmt.Errorf("setting contains non-alphanumeric characters")
+				}
+			case "ipport":
+				host, port, err := net.SplitHostPort(val) // local err
+				if err != nil {
+					return err
+				}
+				if len(host) < 1 {
+					return fmt.Errorf("missing hostname in address \"%s\"", val)
+				}
+				if !portRegEx.MatchString(host) {
+					return fmt.Errorf("missing port in address \"%s\"", val)
+				}
+				target.SetString(fmt.Sprintf("%s:%s", host, port))
 			default:
-				panic(fmt.Sprintf("could not find string handler %s", f))
+				panic(fmt.Sprintf("could not find string handler for type \"%s\"", f))
 			}
 		} else {
 			target.SetString(val)

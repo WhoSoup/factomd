@@ -47,9 +47,9 @@ type Config struct {
 	Factomd struct {
 		Network                  string `def:"MAIN" f:"network"`
 		HomeDir                  string `def:"" f:"path"`
-		BlockTime                int    `def:"600" f:"time" min:"1"`
-		FaultTimeout             int    `def:"60" f:"time"`
-		RoundTimeout             int    `def:"30" f:"time"`
+		BlockTime                int    `def:"10m" f:"time" min:"1"`
+		FaultTimeout             int    `def:"1m" f:"time"`
+		RoundTimeout             int    `def:"30s" f:"time"`
 		ForceFollower            bool   `def:"false"`
 		OracleChain              string `def:"111111118d918a8be684e0dac725493a75862ef96d2d3f43f84b26969329bf03" f:"hex64"`
 		OraclePublicKey          string `def:"daf5815c2de603dbfa3e1e64f88a5cf06083307cf40da4a9b539c41832135b4a" f:"hex64"`
@@ -62,20 +62,20 @@ type Config struct {
 		IdentityPublicKey        string `def:"cc1985cdfae4e32b5a454dfda8ce5e1361558482684f3367649c3ad852c8e31a" f:"hex64"`
 		IdentityActivationHeight int    `def:"0" min:"0"`
 
-		APIPort           int    `def:"8088" min:"1" max:"65535"`
-		ControlPanel      string `def:"READONLY" enum:"DISABLED,READONLY,READWRITE"`
-		ControlPanelPort  int    `def:"8090" min:"1" max:"65535"`
-		ControlPanelName  string `def:""`
-		PprofExpose       bool   `def:"false"`
-		PprofPort         int    `def:"8090" min:"1" max:"65535"`
-		PprofMPR          int    `def:"524288" min:"0"`
-		WebTLS            bool   `def:"false"`
-		WebTLSCertificate string `def:"" f:"path"`
-		WebTLSKey         string `def:"" f:"path"`
-		WebTLSHosts       string `def:"" list:","`
-		WebUsername       string `def:""`
-		WebPassword       string `def:""`
-		WebCORS           string `def:""`
+		APIPort                int    `def:"8088" min:"1" max:"65535"`
+		ControlPanel           string `def:"READONLY" enum:"DISABLED,READONLY,READWRITE"`
+		ControlPanelPort       int    `def:"8090" min:"1" max:"65535"`
+		ControlPanelName       string `def:""`
+		PprofExpose            bool   `def:"false"`
+		PprofPort              int    `def:"8090" min:"1" max:"65535"`
+		PprofMPR               int    `def:"524288" min:"0"`
+		WebTLS                 bool   `def:"false"`
+		WebTLSCertificate      string `def:"" f:"path"`
+		WebTLSKey              string `def:"" f:"path"`
+		webTLSCertificateHosts string `def:"" list:","`
+		WebUsername            string `def:""`
+		WebPassword            string `def:""`
+		WebCORS                string `def:""`
 
 		DbType           string `def:"LDB" enum:"LDB,BOLT,MAP"`
 		DbSlug           string `def:"" f:"alpha"`
@@ -94,7 +94,7 @@ type Config struct {
 		P2PFanout           int    `def:"16" min:"1"`
 		P2PSpecialPeers     string `def:"" f:"ipport" list:","`
 		P2PConnectionPolicy string `def:"NORMAL" enum:"NORMAL,ACCEPT,REFUSE"`
-		P2PTimeout          int    `def:"300" f:"time"`
+		P2PTimeout          int    `def:"5m" f:"time"`
 
 		LogLevel    string `def:"ERROR" enum:"DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY,NONE"`
 		LogPath     string `def:"database/Log" f:"path"`
