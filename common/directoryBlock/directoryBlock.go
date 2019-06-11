@@ -481,10 +481,6 @@ func (d *DirectoryBlock) AddEntry(chainID interfaces.IHash, keyMR interfaces.IHa
 	dbentry.SetChainID(chainID)
 	dbentry.SetKeyMR(keyMR)
 
-	if d.DBEntries == nil {
-		d.DBEntries = []interfaces.IDBEntry{}
-	}
-
 	return d.SetDBEntries(append(d.DBEntries, dbentry))
 }
 
