@@ -116,3 +116,60 @@ func Test_fNetwork(t *testing.T) {
 		})
 	}
 }
+
+func Test_stringFTag(t *testing.T) {
+	type args struct {
+		f   string
+		val string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{"f empty", args{"", ""}, true},
+		{"url empty", args{"url", ""}, false},
+		{"url basic", args{"url", "https://www.factomprotocol.org/"}, false},
+		{"url localhost", args{"url", "http://localhost/seed"}, false},
+		{"url main seed", args{"url", "https://raw.githubusercontent.com/FactomProject/factomproject.github.io/master/seed/mainseed.txt"}, false},
+		{"url testnet seed", args{"url", "https://raw.githubusercontent.com/FactomProject/communitytestnet/master/seeds/testnetseeds.txt"}, false},
+		{"hex64 empty", args{"hex64", ""}, true},
+		{"hex64 nonhex", args{"hex64", "z"}, true},
+		{"hex64 hex but short", args{"hex64", "c0ffee"}, true},
+		{"hex64 zero but short", args{"hex64", "000000000000000000000000000000000000000000000000000000000000000"}, true},
+		{"hex64 zero", args{"hex64", "0000000000000000000000000000000000000000000000000000000000000000"}, false},
+		{"hex64 all", args{"hex64", "0123456789ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef"}, false},
+		{"hex64 f", args{"hex64", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}, false},
+		{"hex64 F", args{"hex64", "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"}, false},
+		{"hex64 f-oneoff 1", args{"hex64", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffg"}, true},
+		{"hex64 f-oneoff 2", args{"hex64", "ffffffffffffffgfffffffffffffffffffffffffffffffffffffffffffffffff"}, true},
+		{"hex64 f-oneoff 3", args{"hex64", "gfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}, true},
+		{"hex64 f-oneoff 4", args{"hex64", "ffffffffffzfffffffffffffffffffffffffffffffffffffffffffffffffffff"}, true},
+		{"sha256 of test", args{"hex64", "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08"}, false},
+		{"network", args{"network", "fnetwork_are_tested_separately_in_this_file"}, false},
+		{"network empty", args{"network", ""}, true},
+		{"alpha empty", args{"alpha", ""}, false},
+		{"alpha all", args{"alpha", "abcdefghijklmonpqrstuvwxyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"}, false},
+		{"alpha nonalpha", args{"alpha", "$"}, true},
+		{"alpha nonalpha 2", args{"alpha", "abc$"}, true},
+		{"alpha nonalpha 3", args{"alpha", "99.99"}, true},
+		{"alpha nonalpha 4", args{"alpha", "normal text"}, true},
+		{"ipport empty", args{"ipport", ""}, true},
+		{"ipport localhost", args{"ipport", "localhost"}, true},
+		{"ipport localhost w port", args{"ipport", "localhost:80"}, false},
+		{"ipport loopback", args{"ipport", "127.0.0.1"}, true},
+		{"ipport loopback w :", args{"ipport", "127.0.0.1:"}, true},
+		{"ipport loopback w zero port", args{"ipport", "127.0.0.1:0"}, false},
+		{"ipport loopback w port", args{"ipport", "127.0.0.1:80"}, false},
+		{"ipport mainseed node", args{"ipport", "52.17.183.121:8108"}, false},
+		{"ipport mainseed node 2", args{"ipport", "34.248.202.6:8108"}, false},
+		{"ipport mainseed node 3", args{"ipport", "52.17.183.121:8108 "}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := stringFTag(tt.args.f, tt.args.val); (err != nil) != tt.wantErr {
+				t.Errorf("stringFTag() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -27,7 +27,6 @@ import (
 //				  will be checked recursively, e.g.: `f:"ipport" list=","`
 //		functions (tag "f")
 //			network: a valid factom network name
-//			path: a valid filepath, either relative or absolute, with optional file
 //			hex64: a 32 byte / 64 character long hexadecimal string
 //			alpha: alpha-numerical (a-z, 0-9) values only
 //			ipport: net addresses in the form <hostname/ip>:<port>
@@ -46,7 +45,7 @@ import (
 type Config struct {
 	Factomd struct {
 		Network                  string `def:"MAIN" f:"network"`
-		HomeDir                  string `def:"" f:"path"`
+		HomeDir                  string `def:""`
 		BlockTime                int    `def:"10m" f:"time" min:"1"`
 		FaultTimeout             int    `def:"1m" f:"time"`
 		RoundTimeout             int    `def:"30s" f:"time"`
@@ -70,8 +69,8 @@ type Config struct {
 		PprofPort              int    `def:"8090" min:"1" max:"65535"`
 		PprofMPR               int    `def:"524288" min:"0"`
 		WebTLS                 bool   `def:"false"`
-		WebTLSCertificate      string `def:"" f:"path"`
-		WebTLSKey              string `def:"" f:"path"`
+		WebTLSCertificate      string `def:""`
+		WebTLSKey              string `def:""`
 		webTLSCertificateHosts string `def:"" list:","`
 		WebUsername            string `def:""`
 		WebPassword            string `def:""`
@@ -79,7 +78,7 @@ type Config struct {
 
 		DbType           string `def:"LDB" enum:"LDB,BOLT,MAP"`
 		DbSlug           string `def:"" f:"alpha"`
-		DbLdbPath        string `def:"database/ldb" f:"path"`
+		DbLdbPath        string `def:"database/ldb"`
 		DbBoltPath       string `def:"database/bolt"`
 		DbExportData     bool   `def:"false"`
 		DbExportDataPath string `def:"database/export"`
@@ -97,11 +96,11 @@ type Config struct {
 		P2PTimeout          int    `def:"5m" f:"time"`
 
 		LogLevel    string `def:"ERROR" enum:"DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY,NONE"`
-		LogPath     string `def:"database/Log" f:"path"`
+		LogPath     string `def:"database/Log"`
 		LogJSON     bool   `def:"false"`
 		LogLogstash string `def:"" f:"url"`
-		LogStdOut   string `def:"" f:"path"`
-		LogStdErr   string `def:"" f:"path"`
+		LogStdOut   string `def:""`
+		LogStdErr   string `def:""`
 		LogMessages string `def:""`
 		LogDBStates bool   `def:"false"`
 
@@ -109,7 +108,7 @@ type Config struct {
 		SimCount      int    `def:"1" min:"1"`
 		SimFocus      int    `def:"0" min:"0"`
 		SimNet        string `def:"LONG" enum:"FILE,SQUARE,LONG,LOOPS,ALOT,ALOT+,TREE,CIRCLES"`
-		SimNetFile    string `def:"" f:"path"`
+		SimNetFile    string `def:""`
 		SimDropRate   int    `def:"0" min:"0" max:"1000"`
 		SimTimeOffset int    `def:"0" f:"time"`
 		SimRuntimeLog bool   `def:"false"`
@@ -123,11 +122,11 @@ type Config struct {
 		KeepMismatch     bool   `def:"false"`
 		ForceSync2Height int    `def:"-1" min:"-1"`
 
-		JournalFile string `def:"" f:"path"`
+		JournalFile string `def:""`
 		JournalMode string `def:"CREATE" enum:"CREATE,READ"`
 		JournalType string `def:"AUTO" enum:"AUTO,FOLLOWER,LEADER"`
 
-		PluginPath          string `def:"" f:"path"`
+		PluginPath          string `def:""`
 		PluginTorrent       bool   `def:"false"`
 		PluginTorrentUpload bool   `def:"false"`
 	}
