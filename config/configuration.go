@@ -3,8 +3,6 @@ package config
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/go-ini/ini"
 )
 
 // Config holds all the possible variables that are configurable in the config file and
@@ -162,38 +160,6 @@ func DefaultConfig() Config {
 	}
 
 	return c
-}
-
-func LoadConfig(path string) (Config, error) {
-	cfg, err := ini.Load(path)
-	if err != nil {
-		return Config{}, err
-	}
-	return parseConfig(cfg)
-}
-
-func LoadString(data string) (Config, error) {
-	cfg, err := ini.Load([]byte(data))
-	if err != nil {
-		return Config{}, err
-	}
-	return parseConfig(cfg)
-}
-
-func parseConfig(file *ini.File) (Config, error) {
-	c := DefaultConfig()
-
-	network := file.Section("Factomd").Key("Network").String()
-
-	if !fNetwork(network) {
-		return c, fmt.Errorf("Network name \"%s\" could not be parsed. Use alphanumeric characters and _ only", network)
-	}
-
-	apply(&c, func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
-
-		return nil
-	})
-	return c, nil
 }
 
 func apply(cfg *Config, do func(category reflect.StructField, field reflect.StructField, val reflect.Value) error) error {
