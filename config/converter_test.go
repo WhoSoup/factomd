@@ -173,3 +173,41 @@ func Test_stringFTag(t *testing.T) {
 		})
 	}
 }
+
+func Test_intFTag(t *testing.T) {
+	type args struct {
+		f   string
+		val string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    int
+		wantErr bool
+	}{
+		{"empty f", args{"", ""}, 0, true},
+		{"time empty", args{"time", ""}, 0, true}, // ftime is already tested separately earlier
+		{"time 0", args{"time", "0"}, 0, false},
+		{"time text 1", args{"time", "one"}, 0, true},
+		{"time 0s", args{"time", "0s"}, 0, false},
+		{"time 0m", args{"time", "0m"}, 0, false},
+		{"time 0h", args{"time", "0h"}, 0, false},
+		{"time 0d", args{"time", "0d"}, 0, false},
+		{"time 1s", args{"time", "1s"}, 1, false},
+		{"time 1m", args{"time", "1m"}, 60, false},
+		{"time 1h", args{"time", "1h"}, 3600, false},
+		{"time 1d", args{"time", "1d"}, 86400, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := intFTag(tt.args.f, tt.args.val)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("intFTag() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("intFTag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

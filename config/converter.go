@@ -104,7 +104,7 @@ func intFTag(f, val string) (int, error) {
 		}
 		return time, nil
 	default: // this is a developer error
-		panic(fmt.Sprintf("no int handler for f-tag \"%s\"", f))
+		return 0, fmt.Errorf("no int handler for f-tag \"%s\"", f)
 	}
 }
 
