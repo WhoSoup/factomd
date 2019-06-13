@@ -42,9 +42,9 @@ import (
 //
 type Config struct {
 	Factomd struct {
-		Network                  string `def:"MAIN" f:"network"`
-		HomeDir                  string `def:""`
-		BlockTime                int    `def:"10m" f:"time" min:"1"`
+		Network                  string `def:"MAIN" f:"network" short:"n"`
+		HomeDir                  string `def:"" short:"h"`
+		BlockTime                int    `def:"10m" f:"time" min:"1" short:"b"`
 		FaultTimeout             int    `def:"1m" f:"time"`
 		RoundTimeout             int    `def:"30s" f:"time"`
 		ForceFollower            bool   `def:"false"`
@@ -74,14 +74,14 @@ type Config struct {
 		WebPassword            string `def:""`
 		WebCORS                string `def:""`
 
-		DbType           string `def:"LDB" enum:"LDB,BOLT,MAP"`
+		DbType           string `def:"LDB" enum:"LDB,BOLT,MAP" short:"db"`
 		DbSlug           string `def:"" f:"alpha"`
 		DbLdbPath        string `def:"database/ldb"`
 		DbBoltPath       string `def:"database/bolt"`
 		DbExportData     bool   `def:"false"`
 		DbExportDataPath string `def:"database/export"`
 		DbDataStorePath  string `def:"data/export"`
-		DbNoFastBoot     bool   `def:"false"`
+		DbNoFastBoot     bool   `def:"false" short:"fb"`
 		DbFastBootRate   int    `def:"1000" min:"1"`
 
 		P2PDisable          bool   `def:"false"`
@@ -89,23 +89,23 @@ type Config struct {
 		P2PPort             int    `def:"8108" min:"1"`
 		P2PSeed             string `def:"" f:"url"`
 		P2PFanout           int    `def:"16" min:"1"`
-		P2PSpecialPeers     string `def:"" f:"ipport" list:","`
+		P2PSpecialPeers     string `def:"" f:"ipport" list:"," short:"p"`
 		P2PConnectionPolicy string `def:"NORMAL" enum:"NORMAL,ACCEPT,REFUSE"`
 		P2PTimeout          int    `def:"5m" f:"time"`
 
-		LogLevel    string `def:"ERROR" enum:"DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY,NONE"`
+		LogLevel    string `def:"ERROR" enum:"DEBUG,INFO,NOTICE,WARNING,ERROR,CRITICAL,ALERT,EMERGENCY,NONE" short:"l"`
 		LogPath     string `def:"database/Log"`
 		LogJSON     bool   `def:"false"`
 		LogLogstash string `def:"" f:"url"`
 		LogStdOut   string `def:""`
 		LogStdErr   string `def:""`
-		LogMessages string `def:""`
+		LogMessages string `def:"" short:"m"`
 		LogDBStates bool   `def:"false"`
 
 		SimNoInput    bool   `def:"false"`
-		SimCount      int    `def:"1" min:"1"`
+		SimCount      int    `def:"1" min:"1" short:"sc"`
 		SimFocus      int    `def:"0" min:"0"`
-		SimNet        string `def:"LONG" enum:"FILE,SQUARE,LONG,LOOPS,ALOT,ALOT+,TREE,CIRCLES"`
+		SimNet        string `def:"LONG" enum:"FILE,SQUARE,LONG,LOOPS,ALOT,ALOT+,TREE,CIRCLES" short:"sn"`
 		SimNetFile    string `def:""`
 		SimDropRate   int    `def:"0" min:"0" max:"1000"`
 		SimTimeOffset int    `def:"0" f:"time"`

@@ -34,6 +34,19 @@ func (f *Flags) Get(flag string) (string, bool) {
 	return val, ok
 }
 
+func (f *Flags) GetS(flags ...string) (string, bool) {
+	var val string
+	var ok bool
+
+	for _, s := range flags {
+		if v, k := f.Get(s); k {
+			val = v
+			ok = k
+		}
+	}
+	return val, ok
+}
+
 func (f *Flags) Unused() []string {
 	var r []string
 	for k := range f.flags {
