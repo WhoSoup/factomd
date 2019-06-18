@@ -48,7 +48,7 @@ func GetUsage() string {
 		}
 		r += fmt.Sprintf(" -%s %s%s\n", lcFirst(field.Name), val.Kind(), t)
 		if hint, ok := field.Tag.Lookup("hint"); ok {
-			r += fmt.Sprintf("    %s\n", hint)
+			r += WordWrap(hint, 80, "    ") + "\n"
 		}
 		r += enum
 		r += "\n"
@@ -59,5 +59,47 @@ func GetUsage() string {
 		panic(err)
 	}
 
+	return r
+}
+
+// WordWrap takes a multi-line string and word wraps each line according to the given character limit.
+// Does not hyphenate words. The specified prefix will be prepended to every line.
+// Lines that start with spaces will maintain their spaces for each wrapped line.
+func WordWrap(s string, limit int, prefix string) string {
+	lines := strings.Split(s, "\n")
+	r := ""
+	fmt.Println(lines)
+	for i, line := range lines {
+		trim := strings.TrimLeft(line, " ")
+		diff := len(line) - len(trim)
+		formatted := wrap(trim, limit-len(prefix)-diff)
+		t := strings.Repeat(" ", diff)
+		r += prefix + t + strings.Join(formatted, prefix+t)
+		if i < len(lines)-1 {
+			r += "\n"
+		}
+	}
+	return r
+}
+
+func wrap(s string, limit int) []string {
+	if len(s) <= limit {
+		return []string{s}
+	}
+	tokens := strings.Split(s, " ")
+	var r []string
+	var line string
+	for i, word := range tokens {
+		if i > 0 && len(line)+len(word) > limit {
+			line = strings.TrimRight(line, " ")
+			r = append(r, line+"\n")
+			line = ""
+		}
+		line += word
+		if i < len(tokens)-1 {
+			line += " "
+		}
+	}
+	r = append(r, line)
 	return r
 }
