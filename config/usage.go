@@ -44,10 +44,11 @@ func GetUsage() string {
 			enum = fmt.Sprintf("    Choices: %s\n", prettyEnum(tag))
 		}
 
+		t = val.Kind().String()
 		if f, ok := field.Tag.Lookup("f"); ok {
-			t = " (" + f + ")"
+			t = f
 		}
-		r += fmt.Sprintf(" -%s %s%s\n", lcFirst(field.Name), val.Kind(), t)
+		r += fmt.Sprintf(" -%s %s\n", lcFirst(field.Name), t)
 		if hint, ok := field.Tag.Lookup("hint"); ok {
 			r += WordWrap(hint, 80, "    ") + "\n"
 		}

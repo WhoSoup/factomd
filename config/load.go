@@ -23,6 +23,12 @@ func LoadConfig() Config {
 		Shutdown(err)
 	}
 
+	_, ok := flags.GetS("help", "h", "?")
+	if ok {
+		fmt.Println(GetUsage())
+		os.Exit(0)
+	}
+
 	path, ok := flags.GetS("config", "c")
 	home, hok := flags.GetS("homedir", "h")
 
@@ -68,6 +74,6 @@ func parseConfig(file *ini.File, flags *Flags) (Config, error) {
 }
 
 func Shutdown(err error) {
-	// TODO print usage here
-	panic(err)
+	fmt.Println("Could not start factomd:", err)
+	os.Exit(1)
 }
