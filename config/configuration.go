@@ -74,15 +74,15 @@ type Config struct {
 		WebPassword            string `def:"" hint:"The password for web authentication"`
 		WebCORS                string `def:"" hint:"This sets the Cross-Origin Resource Sharing (CORS) header for the API and Walletd. If left blank, CORS is disabled"`
 
-		DbType           string `def:"LDB" enum:"LDB,BOLT,MAP" short:"db" hint:"Which database architecture to use"`
-		DbSlug           string `def:"" f:"alpha" hint:"Set a unique identifier included in the path if you want run multiple databases in the same HomeDir"`
-		DbLdbPath        string `def:"database/ldb" hint:"Sub-path relative to HomeDir to store Ldb files"`
-		DbBoltPath       string `def:"database/bolt" hint:"Sub-path relative to HomeDir for BoltDB"`
-		DbExportData     bool   `def:"false" hint:"If enabled, factomd will turn on the block extractor to export blocks to disk"`
-		DbExportDataPath string `def:"database/export" hint:"Sub-path relative to HomeDir for exporting data"`
-		DbDataStorePath  string `def:"data/export" hint:"Sub-path relative to HomeDir for the block extractor"`
-		DbNoFastBoot     bool   `def:"false" short:"fb" hint:"Disable the use of the FastBoot file to cache block validation"`
-		DbFastBootRate   int    `def:"1000" min:"1" hint:"Create a FastBoot entry every X blocks"`
+		DBType           string `def:"LDB" enum:"LDB,BOLT,MAP" short:"db" hint:"Which database architecture to use"`
+		DBSlug           string `def:"" f:"alpha" hint:"Set a unique identifier included in the path if you want run multiple databases in the same HomeDir"`
+		DBLdbPath        string `def:"database/ldb" hint:"Sub-path relative to HomeDir to store Ldb files"`
+		DBBoltPath       string `def:"database/bolt" hint:"Sub-path relative to HomeDir for BoltDB"`
+		DBExportData     bool   `def:"false" hint:"If enabled, factomd will turn on the block extractor to export blocks to disk"`
+		DBExportDataPath string `def:"database/export" hint:"Sub-path relative to HomeDir for exporting data"`
+		DBDataStorePath  string `def:"data/export" hint:"Sub-path relative to HomeDir for the block extractor"`
+		DBNoFastBoot     bool   `def:"false" short:"fb" hint:"Disable the use of the FastBoot file to cache block validation"`
+		DBFastBootRate   int    `def:"1000" min:"1" hint:"Create a FastBoot entry every X blocks"`
 
 		P2PDisable          bool   `def:"false" hint:"Disable the peer to peer network"`
 		P2PPeerFileSuffix   bool   `def:"false" hint:"The filename suffix of the peers file which is added to the current network"`

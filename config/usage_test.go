@@ -49,3 +49,57 @@ func TestWordWrap(t *testing.T) {
 		})
 	}
 }
+
+func Test_lcFirst(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"empty", args{""}, ""},
+		{"lowercase", args{"foo"}, "foo"},
+		{"uppercase", args{"FOO"}, "fOO"},
+		{"regular case", args{"Foo"}, "foo"},
+		{"camel case", args{"fooBar"}, "fooBar"},
+		{"pascal case", args{"FooBar"}, "fooBar"},
+		{"special p2p ", args{"P2PFooBar"}, "p2pFooBar"},
+		{"two fords", args{"FOO BAR"}, "fOO BAR"},
+		{"special api", args{"APIFooBar"}, "apiFooBar"},
+		{"special api bad", args{"APiFooBar"}, "aPiFooBar"},
+		{"special Db", args{"DBFooBar"}, "dbFooBar"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := lcFirst(tt.args.s); got != tt.want {
+				t.Errorf("lcFirst() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_prettyEnum(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{"blank", args{""}, ""},
+		{"one", args{"a"}, "a"},
+		{"two words", args{"foo bar"}, "foo bar"},
+		{"two enums", args{"foo,bar"}, "foo, bar"},
+		{"three enums", args{"foo,bar,boo"}, "foo, bar, boo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := prettyEnum(tt.args.s); got != tt.want {
+				t.Errorf("prettyEnum() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

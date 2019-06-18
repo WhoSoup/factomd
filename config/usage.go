@@ -8,14 +8,18 @@ import (
 	"github.com/FactomProject/factomd/engine"
 )
 
+// convert from golang's pascal case to camelcase used in config file
 func lcFirst(s string) string {
 	if len(s) < 2 {
 		return strings.ToLower(s)
 	}
 	s = strings.Replace(s, "P2P", "p2p", 1)
+	s = strings.Replace(s, "API", "api", 1)
+	s = strings.Replace(s, "DB", "db", 1)
 	return strings.ToLower(string(s[0])) + string(s[1:])
 }
 
+// format enum list for display
 func prettyEnum(s string) string {
 	return strings.Replace(s, ",", ", ", -1)
 }
@@ -27,10 +31,7 @@ func GetUsage() string {
 	}
 	r := fmt.Sprintf("////// Factomd v%s Build %s\n", engine.FactomdVersion, b)
 	r += "Usage:\n"
-	r += " All command line options supersede config file options."
-	r += "\t-option int\n"
-	r += "\t\tThis is some longer hint"
-
+	r += " All command line options supersede config file options.\n"
 	var c Config
 	err := walk(&c, func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		if cat.Name != "Factomd" {
@@ -68,7 +69,6 @@ func GetUsage() string {
 func WordWrap(s string, limit int, prefix string) string {
 	lines := strings.Split(s, "\n")
 	r := ""
-	fmt.Println(lines)
 	for i, line := range lines {
 		trim := strings.TrimLeft(line, " ")
 		diff := len(line) - len(trim)
