@@ -69,7 +69,7 @@ type Config struct {
 		WebTLS                 bool   `def:"false" hint:"If TLS is enabled, the control panel and API will only be accessible via HTTPS. If you have a certificate, you can specify the location of the certificate and PEM key. If you enable TLS without an existing certificate, factomd will generate a self-signed certificate inside HomeDir"`
 		WebTLSCertificate      string `def:"" hint:"Path to the certificate"`
 		WebTLSKey              string `def:"" hint:"Path to the PEM key file"`
-		webTLSCertificateHosts string `def:"" list:"," hint:"To include any additional ip addresses or hostnames in the self-signed certificate, add them in a comma-separated list. Note that localhost, 127.0.0.1, and ::1 are included by default.\nExample: \"exampledomain.abc,192.168.0.1,192.168.0.2\""`
+		WebTLSCertificateHosts string `def:"" list:"," hint:"To include any additional ip addresses or hostnames in the self-signed certificate, add them in a comma-separated list. Note that localhost, 127.0.0.1, and ::1 are included by default.\nExample: \"exampledomain.abc,192.168.0.1,192.168.0.2\""`
 		WebUsername            string `def:"" hint:"If set, the control panel and API will require basic http authentication to use"`
 		WebPassword            string `def:"" hint:"The password for web authentication"`
 		WebCORS                string `def:"" hint:"This sets the Cross-Origin Resource Sharing (CORS) header for the API and Walletd. If left blank, CORS is disabled"`
@@ -85,7 +85,7 @@ type Config struct {
 		DBFastBootRate   int    `def:"1000" min:"1" hint:"Create a FastBoot entry every X blocks"`
 
 		P2PDisable          bool   `def:"false" hint:"Disable the peer to peer network"`
-		P2PPeerFileSuffix   bool   `def:"false" hint:"The filename suffix of the peers file which is added to the current network"`
+		P2PPeerFileSuffix   string `def:"peers.json" hint:"The filename suffix of the peers file which is added to the current network"`
 		P2PPort             int    `def:"8108" min:"1" hint:"The default port used for network connections"`
 		P2PSeed             string `def:"" f:"url" hint:"The URL of the seed file to use for bootstrapping"`
 		P2PFanout           int    `def:"16" min:"1" hint:"How many peers to broadcast messages to"`
@@ -114,7 +114,7 @@ type Config struct {
 
 		DebugConsole     string `def:"OFF" enum:"OFF,LOCAL,ON" hint:"The mode of the debug console.\n  OFF: no debug console\n  LOCAL: only accepts connections from localhost and launches a terminal\n  ON: accepts remote connections\n"`
 		DebugConsolePort int    `def:"8093" min:"1" max:"65535" hint:"The port to launch the console server"`
-		ChainHeadFix     bool   `def:"false" hint:"The behavior of validating chain heads on boot\n  OFF: don't check at all\n  IGNORE: check but don't fix\n  ON: check and automatically fix invalid chain heads\n"`
+		ChainHeadFix     bool   `def:"ON" enum:"OFF,IGNORE,ON" hint:"The behavior of validating chain heads on boot\n  OFF: don't check at all\n  IGNORE: check but don't fix\n  ON: check and automatically fix invalid chain heads\n"`
 		OneLeader        bool   `def:"false" hint:"If enabled, all entries for one factom-minute will be handled by a VM index 0 instead of being distributed over all VMs"`
 		KeepMismatch     bool   `def:"false" hint:"Keep the node's DBState even if the signature doesn't match with the majority"`
 		ForceSync2Height int    `def:"-1" min:"-1" hint:"Force the height on the second pass sync. Set to -1 to disable, 0 to force a complete sync"`

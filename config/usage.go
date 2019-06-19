@@ -24,12 +24,16 @@ func prettyEnum(s string) string {
 	return strings.Replace(s, ",", ", ", -1)
 }
 
-func GetUsage() string {
+func header() string {
 	b := engine.Build
 	if b == "" {
 		b = "dev"
 	}
-	r := fmt.Sprintf("////// Factomd v%s Build %s\n", engine.FactomdVersion, b)
+	return fmt.Sprintf("%7s Copyright (c) 2019 Factom Foundation\n%7s %s\n%7s %s\n", "Factomd", "Version", engine.FactomdVersion, "Build", b)
+}
+
+func GetUsage() string {
+	r := header()
 	r += "Usage:\n"
 	r += " All command line options supersede config file options.\n"
 	var c Config

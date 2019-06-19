@@ -72,7 +72,7 @@ func stringFTag(f, val string) error {
 		if fNetwork(val) {
 			return nil
 		}
-		return fmt.Errorf("network name contains invalid characters. use alphanumeric and _ (underscore) only")
+		return fmt.Errorf("network name \"%s\" contains invalid characters. use alphanumeric and _ (underscore) only", val)
 	case "alpha":
 		if alphaRegEx.MatchString(val) {
 			return nil
@@ -146,20 +146,24 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 				err = fmt.Errorf("%s not part of enum %s", val, set)
 			}
 		} else if sep, ok := tag.Lookup("list"); ok {
-			items := strings.Split(val, sep)
-			f, hasf := tag.Lookup("f")
-			for k, i := range items {
-				i = strings.TrimSpace(i)
-				if hasf {
-					if err = stringFTag(f, i); err != nil {
-						return
+			if val == "" {
+				target.SetString("")
+			} else {
+				items := strings.Split(val, sep)
+				f, hasf := tag.Lookup("f")
+				for k, i := range items {
+					i = strings.TrimSpace(i)
+					if hasf {
+						if err = stringFTag(f, i); err != nil {
+							return
+						}
 					}
+					items[k] = i
 				}
-				items[k] = i
+				target.SetString(strings.Join(items, ","))
 			}
-			target.SetString(strings.Join(items, ","))
 		} else if f, ok := tag.Lookup("f"); ok {
-			if err = stringFTag(f, val); err != nil {
+			if err = stringFTag(f, val); err == nil {
 				target.SetString(val)
 			}
 		} else {
