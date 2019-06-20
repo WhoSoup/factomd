@@ -183,6 +183,10 @@ func (c *Config) walk(do func(category reflect.StructField, field reflect.Struct
 }
 
 func (c *Config) addConfig(file *ini.File, network string) error {
+	if isOldFormat(file) {
+		file = fromOldFormat(file)
+	}
+
 	err := c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		section := fmt.Sprintf("%s.%s", category.Name, network) // ini package automatically handles inheritance
 		if file.Section(section).HasKey(field.Name) {
@@ -200,6 +204,8 @@ func (c *Config) addConfig(file *ini.File, network string) error {
 }
 
 func (c *Config) addFlags(flags *Flags) error {
+	convertOldFlags(flags)
+
 	return c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		// there's a short tag
 		if short, ok := field.Tag.Lookup("short"); ok {
