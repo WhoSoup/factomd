@@ -38,26 +38,26 @@ func convertOldFlags(flags *Flags) {
 		_move("customnet", "network")
 	}
 	_move("factomhome", "homedir")
-	_move("blktime", "blockTime")
+	_move("blktime", "blocktime")
 
-	_reverseBool("balancehash", "noBalanceHash")
+	_reverseBool("balancehash", "nobalancehash")
 
-	_move("controlpanelsetting", "controlPanel")
-	_move("nodename", "controlPanelName")
-	_move("exposeprofiler", "pprofExpose")
-	_move("logPort", "pprofPort")
-	_move("mpr", "pprofMPR")
-	_move("tls", "webTLS")
-	_move("selfaddr", "webTLSCertificateHosts")
-	_move("rpcuser", "webUsername")
-	_move("rpcpass", "webPassword")
-	_move("prefix", "dbSlug")
-	_reverseBool("fast", "dbNoFastBoot")
-	_move("fastsaverate", "dbFastBootRate")
-	_move("enablenet", "p2pDisable")
+	_move("controlpanelsetting", "controlpanel")
+	_move("nodename", "controlpanelname")
+	_move("exposeprofiler", "pprofexpose")
+	_move("logPort", "pprofport")
+	_move("mpr", "pprofmpr")
+	_move("tls", "webtls")
+	_move("selfaddr", "webtlscertificatehosts")
+	_move("rpcuser", "webusername")
+	_move("rpcpass", "webpassword")
+	_move("prefix", "dbslug")
+	_reverseBool("fast", "dbnofastboot")
+	_move("fastsaverate", "dbfastbootrate")
+	_move("enablenet", "p2pdisable")
 	_move("networkport", "p2pPort")
-	_move("broadcastnum", "p2pFanout")
-	_move("peers", "p2pSpecialPeers")
+	_move("broadcastnum", "p2pfanout")
+	_move("peers", "p2pspecialpeers")
 
 	ex1, ok1 := flags.flags["exclusive"]
 	ex2, ok2 := flags.flags["exclusive_in"]
@@ -66,42 +66,42 @@ func convertOldFlags(flags *Flags) {
 	if ok1 || ok2 {
 		switch {
 		case ex1 == "true" && ex2 == "true":
-			flags.flags["p2pConnectionPolicy"] = "REFUSE"
+			flags.flags["p2pconnectionpolicy"] = "REFUSE"
 		case ex1 == "true":
-			flags.flags["p2pConnectionPolicy"] = "ACCEPT"
+			flags.flags["p2pconnectionpolicy"] = "ACCEPT"
 		default:
-			flags.flags["p2pConnectionPolicy"] = "NORMAL"
+			flags.flags["p2pconnectionpolicy"] = "NORMAL"
 		}
 	}
 
-	_move("deadline", "p2pTimeout")
-	_move("loglvl", "logLevel")
-	_move("logjson", "logJSON")
+	_move("deadline", "p2ptimeout")
+	_move("loglvl", "loglevel")
+	_move("logjson", "logjson")
 	if flags.flags["logstash"] == "true" {
-		_move("logurl", "logLogstash")
+		_move("logurl", "loglogstash")
 	}
 	delete(flags.flags, "logstash")
 	delete(flags.flags, "logurl")
 
-	_move("debuglog", "logMessages")
-	_move("wrproc", "logDBStates")
-	_reverseBool("sim_stdin", "simNoInput")
-	_move("cnt", "simCount")
-	_move("node", "simFocus")
-	_move("net", "simNet")
-	_move("fnet", "simNetFile")
-	_move("drop", "simDropRate")
-	_move("timedelta", "simTimeOffset")
-	_move("runtimelog", "simRuntimeLog")
-	_move("waitentries", "simWait")
+	_move("debuglog", "logmessages")
+	_move("wrproc", "logdbstates")
+	_reverseBool("sim_stdin", "simnoinput")
+	_move("cnt", "simcount")
+	_move("node", "simfocus")
+	_move("net", "simnet")
+	_move("fnet", "simnetfile")
+	_move("drop", "simdroprate")
+	_move("timedelta", "simtimeoffset")
+	_move("runtimelog", "simruntimelog")
+	_move("waitentries", "simwait")
 
 	if val, ok := flags.flags["debugconsole"]; ok {
 		var getPort bool
 		if strings.Contains(val, "localhost") {
-			flags.flags["debugConsole"] = "LOCAL"
+			flags.flags["debugconsole"] = "LOCAL"
 			getPort = true
 		} else if strings.Contains(val, "remote") {
-			flags.flags["debugConsole"] = "ON"
+			flags.flags["debugconsole"] = "ON"
 			getPort = true
 		}
 
@@ -110,30 +110,30 @@ func convertOldFlags(flags *Flags) {
 			if len(parts) != 2 {
 				Shutdown(fmt.Errorf("invalid format of -debugconsole (deprecated format). needs to be \"(localhost|remote):port\""))
 			}
-			flags.flags["debugConsolePort"] = parts[1]
+			flags.flags["debugconsoleport"] = parts[1]
 		}
 	}
 
 	if val, ok := flags.flags["checkheads"]; ok {
 		if val == "true" {
 			if flags.flags["fixheads"] == "false" {
-				flags.flags["chainHeadFix"] = "IGNORE"
+				flags.flags["chainheadfix"] = "IGNORE"
 			} else {
-				flags.flags["chainHeadFix"] = "ON"
+				flags.flags["chainheadfix"] = "ON"
 			}
 		} else {
-			flags.flags["chainHeadFix"] = "OFF"
+			flags.flags["chainheadfix"] = "OFF"
 		}
 
 		delete(flags.flags, "checkheads")
 		delete(flags.flags, "fixheads")
 	}
 
-	_move("rotate", "oneLeader")
-	_move("sync2", "forceSync2Height")
-	_move("plugin", "pluginPath")
-	_move("tormanage", "pluginTorrent")
-	_move("torupload", "pluginTorrentUpload")
+	_move("rotate", "oneleader")
+	_move("sync2", "forcesync2height")
+	_move("plugin", "pluginpath")
+	_move("tormanage", "plugintorrent")
+	_move("torupload", "plugintorrentupload")
 
 	// TODO journal
 
