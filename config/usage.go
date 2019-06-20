@@ -36,8 +36,8 @@ func GetUsage() string {
 	r := header()
 	r += "Usage:\n"
 	r += " All command line options supersede config file options.\n"
-	var c Config
-	err := walk(&c, func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
+	c := new(Config)
+	err := c.walk(func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		if cat.Name != "Factomd" {
 			return nil
 		}

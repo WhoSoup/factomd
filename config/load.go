@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 
 	"github.com/FactomProject/factomd/util"
 	"github.com/go-ini/ini"
@@ -38,7 +37,6 @@ func LoadConfig() Config {
 		}
 	}
 
-	// TODO use path.FilePath instead of this
 	if ok { // a config file path was passed
 		if !filepath.IsAbs(path) { // is relative, convert to absolute
 			if fileDoesNotExist(path) { // file does not exist in CWD
@@ -60,82 +58,68 @@ func LoadConfig() Config {
 			Shutdown(fmt.Errorf("could not read file: %v", err))
 		}
 	} else {
-		path = util.GetConfigFilename("m2")
+		path = util.GetConfigFilename("m2") // the default config is optional
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			path = ""
+		}
 	}
 
-	file, err := ini.InsensitiveLoad(path)
-	if err != nil {
-		Shutdown(fmt.Errorf("Unable to load config file: %v", err))
+	// order of priority from least to highest:
+	// default, config global, config network specific, command line long, command line short
+
+	cfg := DefaultConfig()
+
+	// load file
+	var file *ini.File
+	if path != "" {
+		file, err = ini.InsensitiveLoad(path)
+		if err != nil {
+			Shutdown(fmt.Errorf("Unable to load config file: %v", err))
+		}
+	} else {
+		file = ini.Empty()
 	}
 
-	cfg, err := parseConfig(file, flags)
+	// determine network from file and flags
 
+	network := determineNetwork(file, flags)
+	if network == "" {
+		network = cfg.Factomd.Network
+	}
+
+	// CONFIG
+	err = cfg.addConfig(file, network)
 	if err != nil {
 		Shutdown(fmt.Errorf("Problem reading configuration\n%v", err))
+	}
+
+	// FLAGS
+	err = cfg.addFlags(flags)
+	if err != nil {
+		Shutdown(fmt.Errorf("Problem reading command line flags\n%v", err))
 	}
 
 	if unused := flags.Unused(); len(unused) > 0 {
 		Shutdown(fmt.Errorf("Unknown command line parameter: %s", unused[0]))
 	}
 
-	return cfg
+	return *cfg
 }
 
-func parseConfig(file *ini.File, flags *Flags) (Config, error) {
-	c := DefaultConfig()
-
+func determineNetwork(file *ini.File, flags *Flags) string {
 	// determine the network manually so we know which sections to load
 	// since order isn't guaranteed
 	network, ok := flags.GetS("network", "n")
-	if !ok {
-		if file.Section("Factomd").HasKey("network") {
-			network = file.Section("Factomd").Key("Network").String()
-		} else {
-			network = c.Factomd.Network
-		}
+	if ok {
+		return network
 	}
 
-	if err := stringFTag("network", network); err != nil {
-		return c, err
+	if file.Section("Factomd").HasKey("network") {
+		// note: the content of this setting will be verified during parseConfig()
+		return file.Section("Factomd").Key("Network").String()
 	}
-	c.Factomd.Network = network
 
-	// order of priority from least to highest:
-	// default, config global, config network specific, command line long, command line short
-	err := walk(&c, func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
-		// there's a short tag
-		if short, ok := field.Tag.Lookup("short"); ok {
-			if short, ok = flags.Get(short); ok {
-				err := set(val, short, field.Tag)
-				if err != nil {
-					return fmt.Errorf("invalid input for command line option \"-%s\":\n%v", short, err)
-				}
-				return nil
-			}
-		}
-
-		// normal command line
-		if long, ok := flags.Get(field.Name); ok {
-			err := set(val, long, field.Tag)
-			if err != nil {
-				return fmt.Errorf("invalid input for command line option \"-%s\":\n%v", field.Name, err)
-			}
-			return nil
-		}
-
-		section := fmt.Sprintf("%s.%s", category.Name, network) // ini package automatically handles inheritance
-		if file.Section(section).HasKey(field.Name) {
-			err := set(val, file.Section(section).Key(field.Name).String(), field.Tag)
-			if err != nil {
-				return fmt.Errorf("invalid value for \"%s.%s\" in the config file:\n%v", section, field.Name, err)
-			}
-		}
-
-		// default is already set
-		return nil
-	})
-
-	return c, err
+	return ""
 }
 
 func Shutdown(err error) {

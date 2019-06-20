@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/go-ini/ini"
 )
 
 // Config holds all the possible variables that are configurable in the config file and
@@ -140,10 +142,10 @@ type Config struct {
 }
 
 // DefaultConfig populates the default values of the config struct using the default tag
-func DefaultConfig() Config {
-	var c Config
+func DefaultConfig() *Config {
+	c := new(Config)
 
-	err := walk(&c, func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
+	err := c.walk(func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		if def, ok := field.Tag.Lookup("def"); ok {
 			err := set(val, def, field.Tag)
 			if err != nil {
@@ -161,9 +163,9 @@ func DefaultConfig() Config {
 	return c
 }
 
-func walk(cfg *Config, do func(category reflect.StructField, field reflect.StructField, val reflect.Value) error) error {
-	baseType := reflect.TypeOf(*cfg)  // de-reference to get type of struct, not pointer
-	baseValue := reflect.ValueOf(cfg) // value of the pointer so we can modify it
+func (c *Config) walk(do func(category reflect.StructField, field reflect.StructField, val reflect.Value) error) error {
+	baseType := reflect.TypeOf(*c)  // de-reference to get type of struct, not pointer
+	baseValue := reflect.ValueOf(c) // value of the pointer so we can modify it
 	for i := 0; i < baseType.NumField(); i++ {
 		cat := baseType.Field(i)
 		catVal := baseValue.Elem().Field(i)
@@ -178,4 +180,48 @@ func walk(cfg *Config, do func(category reflect.StructField, field reflect.Struc
 		}
 	}
 	return nil
+}
+
+func (c *Config) addConfig(file *ini.File, network string) error {
+	err := c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
+		section := fmt.Sprintf("%s.%s", category.Name, network) // ini package automatically handles inheritance
+		if file.Section(section).HasKey(field.Name) {
+			err := set(val, file.Section(section).Key(field.Name).String(), field.Tag)
+			if err != nil {
+				return fmt.Errorf("invalid value for \"%s.%s\" in the config file:\n%v", section, field.Name, err)
+			}
+		}
+
+		// default is already set
+		return nil
+	})
+
+	return err
+}
+
+func (c *Config) addFlags(flags *Flags) error {
+	return c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
+		// there's a short tag
+		if short, ok := field.Tag.Lookup("short"); ok {
+			if short, ok = flags.Get(short); ok {
+				err := set(val, short, field.Tag)
+				if err != nil {
+					return fmt.Errorf("invalid input for command line option \"-%s\":\n%v", short, err)
+				}
+				return nil
+			}
+		}
+
+		// normal command line
+		if long, ok := flags.Get(field.Name); ok {
+			err := set(val, long, field.Tag)
+			if err != nil {
+				return fmt.Errorf("invalid input for command line option \"-%s\":\n%v", field.Name, err)
+			}
+			return nil
+		}
+
+		// default is already set
+		return nil
+	})
 }
