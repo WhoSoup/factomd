@@ -14,6 +14,29 @@ func fileDoesNotExist(path string) bool {
 	return os.IsNotExist(err)
 }
 
+// LoadConfig will parse the os args, read the config file, and return a Config
+// struct containing the appropriate values
+//
+// Config File Location:
+// if -config is set:
+//		if path is absolute:
+//			check if file exists (throw error)
+//		else
+//			check if file exists in CWD (no error)
+//			else if -homedir is set
+//					check if file exists in homedir (throw error if it does not)
+//					else check if file exists in default factom home (throw error)
+// else
+//		use default factom home + "factomd.conf"
+//		or blank if that does not exist
+//
+// General order of operation:
+// 1. Create default config
+// 2. Load config file
+// 3. Parse Flags
+// 4. Determine "network" from config and flags
+// 5. Apply the config, using the settings for appropriate network
+// 6. Apply the flags
 func LoadConfig() Config {
 	flags, err := ParseOSFlags()
 	if err != nil {
@@ -54,7 +77,7 @@ func LoadConfig() Config {
 		}
 
 		// at this point, path is absolute
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		if fileDoesNotExist(path) {
 			Shutdown(fmt.Errorf("could not read file: %v", err))
 		}
 	} else {
@@ -72,16 +95,24 @@ func LoadConfig() Config {
 	// load file
 	var file *ini.File
 	if path != "" {
+		// TODO yaml "role" support
+		//		ext := filepath.Ext(path)
+		//		if ext == ".yml" || ext == ".yaml" {
+		//			file, err = yamlToIni(path)
+		//			if err != nil {
+		//				Shutdown(fmt.Errorf("Unable to load yaml file: %v", err))
+		//			}
+		//		} else {
 		file, err = ini.InsensitiveLoad(path)
 		if err != nil {
 			Shutdown(fmt.Errorf("Unable to load config file: %v", err))
 		}
+		//		}
 	} else {
 		file = ini.Empty()
 	}
 
 	// determine network from file and flags
-
 	network := determineNetwork(file, flags)
 	if network == "" {
 		network = cfg.Factomd.Network
@@ -106,9 +137,9 @@ func LoadConfig() Config {
 	return *cfg
 }
 
+// determine the network manually so we know which sections to load
+// since order isn't guaranteed
 func determineNetwork(file *ini.File, flags *Flags) string {
-	// determine the network manually so we know which sections to load
-	// since order isn't guaranteed
 	network, ok := flags.GetS("network", "n")
 	if ok {
 		return network
@@ -122,6 +153,7 @@ func determineNetwork(file *ini.File, flags *Flags) string {
 	return ""
 }
 
+// Shutdown is a prettyfied way to stop execution before Factomd is loaded
 func Shutdown(err error) {
 	fmt.Println(header())
 	fmt.Println(WordWrap(fmt.Sprintf("Could not start factomd: %v", err), 80, ""))

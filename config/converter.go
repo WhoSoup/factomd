@@ -2,11 +2,15 @@ package config
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/go-ini/ini"
+	"gopkg.in/yaml.v2"
 )
 
 var networkRegEx = regexp.MustCompile("(?i)^[a-z0-9_]+$") // also checks for blank
@@ -173,4 +177,53 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 		err = fmt.Errorf("variable type \"%s\" does not have a handler in config/convert.go", target.Kind())
 	}
 	return
+}
+
+func yamlToIni(path string) (*ini.File, error) {
+	content, err := ioutil.ReadFile(path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var yml map[interface{}]interface{}
+
+	err = yaml.Unmarshal(content, &yml)
+	if err != nil {
+		return nil, err
+	}
+
+	// we are expecting a 2 level yaml file, error on anything else
+	i, err := ini.InsensitiveLoad([]byte(""))
+	if err != nil { // doesn't happen unless ini package has a bug
+		return nil, err
+	}
+
+	for cat, subcat := range yml {
+		cats, ok := cat.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid yaml data, expected string, got %v", cat)
+		}
+
+		sect, err := i.NewSection(fmt.Sprintf("%v", cat))
+		if err != nil {
+			return nil, fmt.Errorf("unable to create section %v", cat)
+		}
+
+		subcats, ok := subcat.(map[interface{}]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid yaml data. section %s has no fields", cats)
+		}
+
+		for key, val := range subcats {
+			keys, ok := key.(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid yaml data in section %s, expected string, got %v", cats, key)
+			}
+
+			sect.NewKey(keys, fmt.Sprintf("%v", val))
+		}
+	}
+
+	return i, nil
 }

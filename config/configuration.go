@@ -182,9 +182,23 @@ func (c *Config) walk(do func(category reflect.StructField, field reflect.Struct
 	return nil
 }
 
+func hasSection(file *ini.File, find string) bool {
+	sects := file.SectionStrings()
+	for _, sec := range sects {
+		if sec == find {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Config) addConfig(file *ini.File, network string) error {
-	if isOldFormat(file) {
+	if hasSection(file, "app") {
 		file = fromOldFormat(file)
+	} else if hasSection(file, "factomd") {
+		// modern version do nothing
+	} else {
+		return fmt.Errorf("unable to read file, no [factomd] section found")
 	}
 
 	err := c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {

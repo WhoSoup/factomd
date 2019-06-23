@@ -35,8 +35,13 @@ func header() string {
 func GetUsage() string {
 	r := header()
 	r += "Usage:\n"
-	r += " All command line options supersede config file options.\n"
+	r += " All command line options supersede config file options.\n\n"
 	c := new(Config)
+	r += " -help\n -h -?\n"
+	r += WordWrap("Prints this usage", 80, "    ") + "\n\n"
+	r += fmt.Sprintf(" -%s %s\n", "config", "string")
+	r += fmt.Sprintf(" -%s\n", "c")
+	r += WordWrap("The path to the configuration file. Uses default location if left blank", 80, "    ") + "\n\n"
 	err := c.walk(func(cat reflect.StructField, field reflect.StructField, val reflect.Value) error {
 		if cat.Name != "Factomd" {
 			return nil
@@ -53,6 +58,9 @@ func GetUsage() string {
 			t = f
 		}
 		r += fmt.Sprintf(" -%s %s\n", lcFirst(field.Name), t)
+		if short, ok := field.Tag.Lookup("short"); ok {
+			r += fmt.Sprintf(" -%s\n", short)
+		}
 		if hint, ok := field.Tag.Lookup("hint"); ok {
 			r += WordWrap(hint, 80, "    ") + "\n"
 		}

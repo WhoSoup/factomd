@@ -12,16 +12,6 @@ import (
 // It will potentially be removed at some point in the future, though there is no time scheduled
 // as of yet.
 
-func isOldFormat(file *ini.File) bool {
-	sects := file.SectionStrings()
-	for _, sec := range sects {
-		if sec == "app" {
-			return true
-		}
-	}
-	return false
-}
-
 func convertOldFlags(flags *Flags) {
 	// helper function to move the value of flag a to flag b
 	_move := func(a, b string) {
