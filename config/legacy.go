@@ -7,6 +7,11 @@ import (
 	"github.com/go-ini/ini"
 )
 
+// *** DEPRECATED SUPPORT **
+// This file holds all the functions to handle the old format of the ini and command line.
+// It will potentially be removed at some point in the future, though there is no time scheduled
+// as of yet.
+
 func isOldFormat(file *ini.File) bool {
 	sects := file.SectionStrings()
 	for _, sec := range sects {
@@ -18,20 +23,28 @@ func isOldFormat(file *ini.File) bool {
 }
 
 func convertOldFlags(flags *Flags) {
+	// helper function to move the value of flag a to flag b
 	_move := func(a, b string) {
 		if val, ok := flags.flags[a]; ok {
 			flags.flags[b] = val
 			delete(flags.flags, a)
 		}
 	}
+	// helper function to move the value of flag a to flag b
+	// and at the same time reverse the boolean value
+	// if the previous default was "true"
 	_reverseBool := func(a, b string) {
 		if val, ok := flags.flags[a]; ok {
 			if val == "false" {
 				flags.flags[b] = "true"
-			}
+			} // if it's not explicitly false, fall back to default
 			delete(flags.flags, a)
 		}
 	}
+
+	// ****************************
+	// ALL FLAG NAMES ARE lowercase
+	// ****************************
 
 	// overwrite network with customnet
 	if val, ok := flags.Get("network"); ok && val == "CUSTOM" {
@@ -153,6 +166,7 @@ func fromOldFormat(old *ini.File) *ini.File {
 	o, _ := cfg.GetSection("app")
 
 	// helper function. sets new config[b] = old config[a], but only if setting exists
+	// ini package converts string to lowercase automatically since case insensitive is set
 	_move := func(a, b string) {
 		if o.HasKey(a) {
 			n.NewKey(b, o.Key(a).String())
