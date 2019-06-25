@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	"github.com/FactomProject/factomd/engine"
 )
 
 // convert from golang's pascal case to camelcase used in config file
@@ -25,11 +23,8 @@ func prettyEnum(s string) string {
 }
 
 func header() string {
-	b := engine.Build
-	if b == "" {
-		b = "dev"
-	}
-	return fmt.Sprintf("%7s Copyright (c) 2019 Factom Foundation\n%7s %s\n%7s %s\n", "Factomd", "Version", engine.FactomdVersion, "Build", b)
+	// TODO move version and build to globals or somewhere else
+	return fmt.Sprintf("%7s Copyright (c) 2019 Factom Foundation\n", "Factomd")
 }
 
 func GetUsage() string {

@@ -6,7 +6,6 @@ package engine
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io/ioutil"
@@ -15,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FactomProject/factomd/config"
+
 	"github.com/FactomProject/factomd/common/constants"
-	. "github.com/FactomProject/factomd/common/globals"
+	"github.com/FactomProject/factomd/common/globals"
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/messages"
 	"github.com/FactomProject/factomd/common/messages/electionMsgs"
@@ -27,7 +28,6 @@ import (
 	"github.com/FactomProject/factomd/elections"
 	"github.com/FactomProject/factomd/p2p"
 	"github.com/FactomProject/factomd/state"
-	"github.com/FactomProject/factomd/util"
 	"github.com/FactomProject/factomd/wsapi"
 	log "github.com/sirupsen/logrus"
 )
@@ -48,7 +48,7 @@ var networkpattern string
 var mLog = new(MsgLog)
 var p2pProxy *P2PProxy
 var p2pNetwork *p2p.Controller
-var logPort string
+var logPort int
 
 func GetFnodes() []*FactomNode {
 	return fnodes
@@ -59,30 +59,149 @@ func init() {
 	primitives.General = messages.General
 }
 
-func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
+func NetStart(s *state.State, cfg config.Config) {
 
-	s.PortNumber = 8088
-	s.ControlPanelPort = 8090
-	logPort = p.LogPort
+	s.PortNumber = cfg.Factomd.APIPort
+	s.ControlPanelPort = cfg.Factomd.ControlPanelPort
+	logPort = cfg.Factomd.PprofPort
+	messages.AckBalanceHash = !cfg.Factomd.NoBalanceHash
 
-	messages.AckBalanceHash = p.AckbalanceHash
 	// Must add the prefix before loading the configuration.
-	s.AddPrefix(p.Prefix)
-	FactomConfigFilename := util.GetConfigFilename("m2")
-	if p.ConfigPath != "" {
-		FactomConfigFilename = p.ConfigPath
+	s.AddPrefix(cfg.Factomd.DBSlug)
+
+	var networkID p2p.NetworkID
+	s.Network = cfg.Factomd.Network
+	switch cfg.Factomd.Network {
+	case "MAIN":
+		s.DirectoryBlockInSeconds = 600
+		networkID = p2p.MainNet
+	case "LOCAL":
+		fmt.Println("Running on the local network, use local coinbase constants")
+		constants.SetLocalCoinBaseConstants()
+		networkID = p2p.LocalNet
+	case "TEST":
+		networkID = p2p.TestNet
+	default: // custom
+		s.Network = "CUSTOM"
+		s.CustomNetworkID = primitives.Sha([]byte(cfg.Factomd.Network)).Bytes()[:4]
+		networkID = p2p.NetworkID(binary.BigEndian.Uint32(s.CustomNetworkID))
+		fmt.Println("Running on the custom network, use custom coinbase constants")
+		constants.SetCustomCoinBaseConstants()
 	}
-	fmt.Println(fmt.Sprintf("factom config: %s", FactomConfigFilename))
-	s.LoadConfig(FactomConfigFilename, p.NetworkName)
-	s.OneLeader = p.Rotate
-	s.TimeOffset = primitives.NewTimestampFromMilliseconds(uint64(p.TimeOffset))
-	s.StartDelayLimit = p.StartDelay * 1000
-	s.Journaling = p.Journaling
+
+	globals.Params.NetworkName = s.Network
+
+	s.LogPath = cfg.SlugPath(cfg.Factomd.LogPath)
+	s.LdbPath = cfg.SlugPath(cfg.Factomd.DBLdbPath)
+	s.BoltDBPath = cfg.SlugPath(cfg.Factomd.DBBoltPath)
+
+	s.LogLevel = strings.ToLower(cfg.Factomd.LogLevel)
+	if cfg.Factomd.ForceFollower {
+		s.NodeMode = "FULL"
+	} else {
+		s.NodeMode = "SERVER"
+	}
+
+	s.DBType = cfg.Factomd.DBType
+	s.ExportData = cfg.Factomd.DBExportData // bool
+	s.ExportDataSubpath = cfg.Factomd.DBExportDataPath
+
+	//s.MainNetworkPort = cfg.Factomd.MainNetworkPort
+	s.PeersFile = cfg.Factomd.P2PPeerFileSuffix
+	//s.MainSeedURL = cfg.Factomd.MainSeedURL
+	//s.MainSpecialPeers = cfg.Factomd.MainSpecialPeers
+	//s.TestNetworkPort = cfg.Factomd.TestNetworkPort
+	//s.TestSeedURL = cfg.Factomd.TestSeedURL
+	//s.TestSpecialPeers = cfg.Factomd.TestSpecialPeers
+	s.CustomBootstrapIdentity = cfg.Factomd.BootstrapIdentity
+	s.CustomBootstrapKey = cfg.Factomd.BootstrapKey
+	//s.LocalNetworkPort = cfg.Factomd.LocalNetworkPort
+	//s.LocalSeedURL = cfg.Factomd.LocalSeedURL
+	//s.LocalSpecialPeers = cfg.Factomd.LocalSpecialPeers
+	s.LocalServerPrivKey = cfg.Factomd.IdentityPrivateKey
+	//s.CustomNetworkPort = cfg.Factomd.CustomNetworkPort
+	//s.CustomSeedURL = cfg.Factomd.CustomSeedURL
+	//s.CustomSpecialPeers = cfg.Factomd.CustomSpecialPeers
+	//.FactoshisPerEC = cfg.Factomd.ExchangeRate
+	s.DirectoryBlockInSeconds = cfg.Factomd.BlockTime
+	s.PortNumber = cfg.Factomd.APIPort
+	s.ControlPanelPort = cfg.Factomd.ControlPanelPort
+	s.RpcUser = cfg.Factomd.WebUsername
+	s.RpcPass = cfg.Factomd.WebPassword
+	s.StateSaverStruct.FastBoot = !cfg.Factomd.DBNoFastBoot
+	//s.StateSaverStruct.FastBootLocation = cfg.Factomd.FastBootLocation
+	s.FastBoot = !cfg.Factomd.DBNoFastBoot
+	//s.FastBootLocation = cfg.Factomd.FastBootLocation
+
+	// to test run curl -H "Origin: http://anotherexample.com" -H "Access-Control-Request-Method: POST" /
+	//     -H "Access-Control-Request-Headers: X-Requested-With" -X POST /
+	//     --data-binary '{"jsonrpc": "2.0", "id": 0, "method": "heights"}' -H 'content-type:text/plain;'  /
+	//     --verbose http://localhost:8088/v2
+
+	// while the config file has http://anotherexample.com in parameter CorsDomains the response should contain the string
+	// < Access-Control-Allow-Origin: http://anotherexample.com
+
+	if len(cfg.Factomd.WebCORS) > 0 {
+		domains := strings.Split(cfg.Factomd.WebCORS, ",")
+		s.CorsDomains = make([]string, len(domains))
+		for _, domain := range domains {
+			s.CorsDomains = append(s.CorsDomains, strings.Trim(domain, " "))
+		}
+	}
+	s.FactomdTLSEnable = cfg.Factomd.WebTLS
+
+	cert := cfg.Factomd.WebTLSCertificate
+	if cert == "" {
+		cert = cfg.HomePath("factomdAPIpub.cert")
+	}
+
+	key := cfg.Factomd.WebTLSKey
+	if key == "" {
+		key = cfg.HomePath("factomdAPIpriv.key")
+	}
+
+	s.SetTLSCertificate(cert, key)
+
+	externalIP := strings.Split(cfg.Walletd.FactomdLocation, ":")[0]
+	if externalIP != "localhost" {
+		s.FactomdLocations = externalIP
+	}
+
+	switch cfg.Factomd.ControlPanel {
+	case "DISABLED":
+		s.ControlPanelSetting = 0
+	case "READWRITE":
+		s.ControlPanelSetting = 2
+	case "READONLY":
+		fallthrough
+	default:
+		s.ControlPanelSetting = 1
+	}
+
+	s.FERChainId = cfg.Factomd.OracleChain
+	s.ExchangeRateAuthorityPublicKey = cfg.Factomd.OraclePublicKey
+
+	identity, err := primitives.HexToHash(cfg.Factomd.IdentityChain)
+	if err != nil {
+		s.IdentityChainID = primitives.Sha([]byte(s.FactomNodeName))
+		s.LogPrintf("AckChange", "Bad IdentityChainID  in config \"%v\"", cfg.Factomd.IdentityChain)
+		s.LogPrintf("AckChange", "Default2 IdentityChainID \"%v\"", s.IdentityChainID.String())
+	} else {
+		s.IdentityChainID = identity
+		s.LogPrintf("AckChange", "Load IdentityChainID \"%v\"", s.IdentityChainID.String())
+	}
+
+	s.JournalFile = s.LogPath + "/journal0" + ".log"
+
+	s.OneLeader = cfg.Factomd.OneLeader
+	s.TimeOffset = primitives.NewTimestampFromMilliseconds(uint64(cfg.Factomd.SimTimeOffset) * 1000)
+	s.StartDelayLimit = int64(cfg.Factomd.StartDelay) * 1000
+	s.Journaling = cfg.Factomd.JournalFile != ""
 	s.FactomdVersion = FactomdVersion
 	s.EFactory = new(electionMsgs.ElectionsFactory)
 
 	log.SetOutput(os.Stdout)
-	switch strings.ToLower(p.Loglvl) {
+	switch strings.ToLower(cfg.Factomd.LogLevel) {
 	case "none":
 		log.SetOutput(ioutil.Discard)
 	case "debug":
@@ -99,93 +218,24 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		log.SetLevel(log.PanicLevel)
 	}
 
-	// Command line override if provided
-	switch p.ControlPanelSetting {
-	case "disabled":
-		s.ControlPanelSetting = 0
-	case "readonly":
-		s.ControlPanelSetting = 1
-	case "readwrite":
-		s.ControlPanelSetting = 2
-	}
-
-	if p.Logjson {
+	if cfg.Factomd.LogJSON {
 		log.SetFormatter(&log.JSONFormatter{})
 	}
 
 	// Set the wait for entries flag
-	s.WaitForEntries = p.WaitEntries
-
-	if 999 < p.PortOverride { // The command line flag exists and seems reasonable.
-		s.SetPort(p.PortOverride)
-	} else {
-		p.PortOverride = s.GetPort()
-	}
-	if 999 < p.ControlPanelPortOverride { // The command line flag exists and seems reasonable.
-		s.ControlPanelPort = p.ControlPanelPortOverride
-	} else {
-		p.ControlPanelPortOverride = s.ControlPanelPort
-	}
-
-	if p.BlkTime > 0 {
-		s.DirectoryBlockInSeconds = p.BlkTime
-	} else {
-		p.BlkTime = s.DirectoryBlockInSeconds
-	}
+	s.WaitForEntries = cfg.Factomd.SimWait
 
 	s.FaultTimeout = 9999999 //todo: Old Fault Mechanism -- remove
 
-	if p.Follower {
-		p.Leader = false
-	}
-	if p.Leader {
-		p.Follower = false
-	}
-	if !p.Follower && !p.Leader {
-		panic("Not a leader or a follower")
-	}
+	s.FastSaveRate = cfg.Factomd.DBFastBootRate
 
-	if p.Journal != "" {
-		p.Cnt = 1
-	}
-
-	if p.RpcUser != "" {
-		s.RpcUser = p.RpcUser
-	}
-
-	if p.RpcPassword != "" {
-		s.RpcPass = p.RpcPassword
-	}
-
-	if p.FactomdTLS == true {
-		s.FactomdTLSEnable = true
-	}
-
-	if p.FactomdLocations != "" {
-		if len(s.FactomdLocations) > 0 {
-			s.FactomdLocations += ","
-		}
-		s.FactomdLocations += p.FactomdLocations
-	}
-
-	if p.Fast == false {
-		s.StateSaverStruct.FastBoot = false
-	}
-	if p.FastLocation != "" {
-		s.StateSaverStruct.FastBootLocation = p.FastLocation
-	}
-	if p.FastSaveRate < 2 || p.FastSaveRate > 5000 {
-		panic("FastSaveRate must be between 2 and 5000")
-	}
-	s.FastSaveRate = p.FastSaveRate
-
-	s.CheckChainHeads.CheckChainHeads = p.CheckChainHeads
-	s.CheckChainHeads.Fix = p.FixChainHeads
+	s.CheckChainHeads.CheckChainHeads = (cfg.Factomd.ChainHeadFix != "OFF")
+	s.CheckChainHeads.Fix = (cfg.Factomd.ChainHeadFix == "ON")
 
 	fmt.Println(">>>>>>>>>>>>>>>>")
 	fmt.Println(">>>>>>>>>>>>>>>> Net Sim Start!")
 	fmt.Println(">>>>>>>>>>>>>>>>")
-	fmt.Println(">>>>>>>>>>>>>>>> Listening to Node", p.ListenTo)
+	fmt.Println(">>>>>>>>>>>>>>>> Listening to Node", cfg.Factomd.SimFocus)
 	fmt.Println(">>>>>>>>>>>>>>>>")
 
 	AddInterruptHandler(func() {
@@ -195,7 +245,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 			fmt.Print("Shutting Down: ", fnode.State.FactomNodeName, "\r\n")
 			fnode.State.ShutdownChan <- 0
 		}
-		if p.EnableNet {
+		if !cfg.Factomd.P2PDisable {
 			p2pNetwork.NetworkStop()
 		}
 		fmt.Print("Waiting...\r\n")
@@ -203,13 +253,11 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		os.Exit(0)
 	})
 
-	if p.Journal != "" {
-		if s.DBType != "Map" {
-			fmt.Println("Journal is ALWAYS a Map database")
-			s.DBType = "Map"
-		}
+	if cfg.Factomd.JournalFile != "" && cfg.Factomd.DBType != "MAP" {
+		cfg.Factomd.DBType = "MAP"
 	}
-	if p.Follower {
+
+	if cfg.Factomd.ForceFollower {
 		s.NodeMode = "FULL"
 		leadID := primitives.Sha([]byte(s.Prefix + "FNode0"))
 		if s.IdentityChainID.IsSameAs(leadID) {
@@ -217,40 +265,21 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		}
 	}
 
-	s.KeepMismatch = p.KeepMismatch
+	s.KeepMismatch = cfg.Factomd.KeepMismatch
 
-	if len(p.Db) > 0 {
-		s.DBType = p.Db
-	} else {
-		p.Db = s.DBType
-	}
+	s.UseLogstash = cfg.Factomd.LogLogstash != ""
+	s.LogstashURL = cfg.Factomd.LogLogstash
 
-	if len(p.CloneDB) > 0 {
-		s.CloneDBType = p.CloneDB
-	} else {
-		s.CloneDBType = p.Db
-	}
+	go StartProfiler(cfg.Factomd.PprofMPR, cfg.Factomd.PprofExpose)
 
-	pnet := p.Net
-	if len(p.Fnet) > 0 {
-		pnet = p.Fnet
-		p.Net = "file"
-	}
-
-	s.UseLogstash = p.UseLogstash
-	s.LogstashURL = p.LogstashURL
-
-	go StartProfiler(p.MemProfileRate, p.ExposeProfiling)
-
-	s.AddPrefix(p.Prefix)
+	s.AddPrefix(cfg.Factomd.DBSlug)
 	s.SetOut(false)
 	s.Init()
-	s.SetDropRate(p.DropRate)
+	s.SetDropRate(cfg.Factomd.SimDropRate)
 
-	if p.Sync2 >= 0 {
-		s.EntryDBHeightComplete = uint32(p.Sync2)
+	if cfg.Factomd.ForceSync2Height >= 0 {
+		s.EntryDBHeightComplete = uint32(cfg.Factomd.ForceSync2Height)
 		s.LogPrintf("EntrySync", "NetStart EntryDBHeightComplete = %d", s.EntryDBHeightComplete)
-
 	} else {
 		height, err := s.DB.FetchDatabaseEntryHeight()
 		if err != nil {
@@ -261,12 +290,12 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		}
 	}
 
-	mLog.Init(p.RuntimeLog, p.Cnt)
+	mLog.Init(cfg.Factomd.SimRuntimeLog, cfg.Factomd.SimCount)
 
 	setupFirstAuthority(s)
 
-	os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "Build", Build))
-	os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "Node name", p.NodeName))
+	/*os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "Build", Build))
+	os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "Node name", s.NodeName))
 	os.Stderr.WriteString(fmt.Sprintf("%20s %v\n", "balancehash", messages.AckBalanceHash))
 	os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "FNode 0 Salt", s.Salt.String()[:16]))
 	os.Stderr.WriteString(fmt.Sprintf("%20s %v\n", "enablenet", p.EnableNet))
@@ -299,7 +328,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	os.Stderr.WriteString(fmt.Sprintf("%20s \"%s\"\n", "corsdomains", s.CorsDomains))
 	os.Stderr.WriteString(fmt.Sprintf("%20s %d\n", "Start 2nd Sync at ht", s.EntryDBHeightComplete))
 
-	os.Stderr.WriteString(fmt.Sprintf("%20s %d\n", "faultTimeout", elections.FaultTimeout))
+	os.Stderr.WriteString(fmt.Sprintf("%20s %d\n", "faultTimeout", elections.FaultTimeout))*/
 
 	if "" == s.RpcPass {
 		os.Stderr.WriteString(fmt.Sprintf("%20s %s\n", "rpcpass", "is blank"))
@@ -315,7 +344,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	//************************************************
 
 	// Make p.cnt Factom nodes
-	for i := 0; i < p.Cnt; i++ {
+	for i := 0; i < cfg.Factomd.SimCount; i++ {
 		makeServer(s) // We clone s to make all of our servers
 	}
 	// Modify Identities of new nodes
@@ -330,68 +359,23 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	}
 
 	// Start the P2P network
-	var networkID p2p.NetworkID
-	var seedURL, networkPort, configPeers string
-	switch s.Network {
-	case "MAIN", "main":
-		networkID = p2p.MainNet
-		seedURL = s.MainSeedURL
-		networkPort = s.MainNetworkPort
-		configPeers = s.MainSpecialPeers
-		s.DirectoryBlockInSeconds = 600
-	case "TEST", "test":
-		networkID = p2p.TestNet
-		seedURL = s.TestSeedURL
-		networkPort = s.TestNetworkPort
-		configPeers = s.TestSpecialPeers
-	case "LOCAL", "local":
-		networkID = p2p.LocalNet
-		seedURL = s.LocalSeedURL
-		networkPort = s.LocalNetworkPort
-		configPeers = s.LocalSpecialPeers
-
-		// Also update the local constants for custom networks
-		fmt.Println("Running on the local network, use local coinbase constants")
-		constants.SetLocalCoinBaseConstants()
-	case "CUSTOM", "custom":
-		if bytes.Compare(p.CustomNet, []byte("\xe3\xb0\xc4\x42")) == 0 {
-			panic("Please specify a custom network with -customnet=<something unique here>")
-		}
-		s.CustomNetworkID = p.CustomNet
-		networkID = p2p.NetworkID(binary.BigEndian.Uint32(p.CustomNet))
-		for i := range fnodes {
-			fnodes[i].State.CustomNetworkID = p.CustomNet
-		}
-		seedURL = s.CustomSeedURL
-		networkPort = s.CustomNetworkPort
-		configPeers = s.CustomSpecialPeers
-
-		// Also update the coinbase constants for custom networks
-		fmt.Println("Running on the custom network, use custom coinbase constants")
-		constants.SetCustomCoinBaseConstants()
-	default:
-		panic("Invalid Network choice in Config File or command line. Choose MAIN, TEST, LOCAL, or CUSTOM")
-	}
 
 	connectionMetricsChannel := make(chan interface{}, p2p.StandardChannelSize)
-	p2p.NetworkDeadline = time.Duration(p.Deadline) * time.Millisecond
+	p2p.NetworkDeadline = time.Duration(cfg.Factomd.P2PTimeout) * time.Millisecond
 
-	if p.EnableNet {
+	if !cfg.Factomd.P2PDisable {
+
 		nodeName := fnodes[0].State.FactomNodeName
-		if 0 < p.NetworkPortOverride {
-			networkPort = fmt.Sprintf("%d", p.NetworkPortOverride)
-		}
-
 		ci := p2p.ControllerInit{
 			NodeName:                 nodeName,
-			Port:                     networkPort,
+			Port:                     string(cfg.Factomd.P2PPort),
 			PeersFile:                s.PeersFile,
 			Network:                  networkID,
-			Exclusive:                p.Exclusive,
-			ExclusiveIn:              p.ExclusiveIn,
-			SeedURL:                  seedURL,
-			ConfigPeers:              configPeers,
-			CmdLinePeers:             p.Peers,
+			Exclusive:                cfg.Factomd.P2PConnectionPolicy != "NORMAL",
+			ExclusiveIn:              cfg.Factomd.P2PConnectionPolicy == "REFUSE",
+			SeedURL:                  cfg.Factomd.P2PSeed,
+			ConfigPeers:              cfg.Factomd.P2PSpecialPeers,
+			CmdLinePeers:             "",
 			ConnectionMetricsChannel: connectionMetricsChannel,
 		}
 		p2pNetwork = new(p2p.Controller).Init(ci)
@@ -407,11 +391,11 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		go networkHousekeeping() // This goroutine executes once a second to keep the proxy apprised of the network status.
 	}
 
-	networkpattern = p.Net
+	networkpattern = strings.ToLower(cfg.Factomd.SimNet)
 
-	switch p.Net {
+	switch networkpattern {
 	case "file":
-		file, err := os.Open(p.Fnet)
+		file, err := os.Open(cfg.Factomd.SimNetFile)
 		if err != nil {
 			panic(fmt.Sprintf("File network.txt failed to open: %s", err.Error()))
 		} else if file == nil {
@@ -427,7 +411,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 			}
 		}
 	case "square":
-		side := int(math.Sqrt(float64(p.Cnt)))
+		side := int(math.Sqrt(float64(cfg.Factomd.SimCount)))
 
 		for i := 0; i < side; i++ {
 			AddSimPeer(fnodes, i*side, (i+1)*side-1)
@@ -441,20 +425,20 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		}
 	case "long":
 		fmt.Println("Using long Network")
-		for i := 1; i < p.Cnt; i++ {
+		for i := 1; i < cfg.Factomd.SimCount; i++ {
 			AddSimPeer(fnodes, i-1, i)
 		}
 		// Make long into a circle
 	case "loops":
 		fmt.Println("Using loops Network")
-		for i := 1; i < p.Cnt; i++ {
+		for i := 1; i < cfg.Factomd.SimCount; i++ {
 			AddSimPeer(fnodes, i-1, i)
 		}
-		for i := 0; (i+17)*2 < p.Cnt; i += 17 {
-			AddSimPeer(fnodes, i%p.Cnt, (i+5)%p.Cnt)
+		for i := 0; (i+17)*2 < cfg.Factomd.SimCount; i += 17 {
+			AddSimPeer(fnodes, i%cfg.Factomd.SimCount, (i+5)%cfg.Factomd.SimCount)
 		}
-		for i := 0; (i+13)*2 < p.Cnt; i += 13 {
-			AddSimPeer(fnodes, i%p.Cnt, (i+7)%p.Cnt)
+		for i := 0; (i+13)*2 < cfg.Factomd.SimCount; i += 13 {
+			AddSimPeer(fnodes, i%cfg.Factomd.SimCount, (i+7)%cfg.Factomd.SimCount)
 		}
 	case "alot":
 		n := len(fnodes)
@@ -510,7 +494,7 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		}
 	default:
 		fmt.Println("Didn't understand network type. Known types: mesh, long, circles, tree, loops.  Using a Long Network")
-		for i := 1; i < p.Cnt; i++ {
+		for i := 1; i < cfg.Factomd.SimCount; i++ {
 			AddSimPeer(fnodes, i-1, i)
 		}
 
@@ -526,10 +510,10 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	}
 	// Initiate dbstate plugin if enabled. Only does so for first node,
 	// any more nodes on sim control will use default method
-	fnodes[0].State.SetTorrentUploader(p.TorUpload)
-	if p.TorManage {
+	fnodes[0].State.SetTorrentUploader(cfg.Factomd.PluginTorrentUpload)
+	if cfg.Factomd.PluginTorrent {
 		fnodes[0].State.SetUseTorrent(true)
-		manager, err := LaunchDBStateManagePlugin(p.PluginPath, fnodes[0].State.InMsgQueue(), fnodes[0].State, fnodes[0].State.GetServerPrivateKey(), p.MemProfileRate)
+		manager, err := LaunchDBStateManagePlugin(cfg.Factomd.PluginPath, fnodes[0].State.InMsgQueue(), fnodes[0].State, fnodes[0].State.GetServerPrivateKey(), cfg.Factomd.PprofMPR)
 		if err != nil {
 			panic("Encountered an error while trying to use torrent DBState manager: " + err.Error())
 		}
@@ -538,8 +522,8 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 		fnodes[0].State.SetUseTorrent(false)
 	}
 
-	if p.Journal != "" {
-		go LoadJournal(s, p.Journal)
+	if cfg.Factomd.JournalFile != "" {
+		go LoadJournal(s, cfg.Factomd.JournalFile)
 		startServers(false)
 	} else {
 		startServers(true)
@@ -559,9 +543,9 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	leveldb.RegisterPrometheus()
 	RegisterPrometheus()
 
-	go controlPanel.ServeControlPanel(fnodes[0].State.ControlPanelChannel, fnodes[0].State, connectionMetricsChannel, p2pNetwork, Build, p.NodeName)
+	go controlPanel.ServeControlPanel(fnodes[0].State.ControlPanelChannel, fnodes[0].State, connectionMetricsChannel, p2pNetwork, Build, s.FactomNodeName)
 
-	go SimControl(p.ListenTo, listenToStdin)
+	go SimControl(cfg.Factomd.SimFocus, !cfg.Factomd.SimNoInput)
 
 }
 

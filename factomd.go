@@ -6,9 +6,9 @@ package main
 
 import (
 	"fmt"
-	"os"
 
-	"reflect"
+	"github.com/FactomProject/factomd/config"
+
 	"runtime"
 	"time"
 
@@ -21,29 +21,10 @@ func main() {
 	//  Go Optimizations...
 	runtime.GOMAXPROCS(runtime.NumCPU()) // TODO: should be *2 to use hyperthreadding? -- clay
 
-	fmt.Println("Command Line Arguments:")
+	cfg := config.LoadConfig()
+	cfg.PrintSettings(true)
 
-	for _, v := range os.Args[1:] {
-		fmt.Printf("\t%s\n", v)
-	}
-
-	params := ParseCmdLine(os.Args[1:])
-	fmt.Println()
-
-	fmt.Println("Parameter:")
-	s := reflect.ValueOf(params).Elem()
-	typeOfT := s.Type()
-
-	for i := 0; i < s.NumField(); i++ {
-		f := s.Field(i)
-		fmt.Printf("%d: %25s %s = %v\n", i,
-			typeOfT.Field(i).Name, f.Type(), f.Interface())
-	}
-
-	fmt.Println()
-	sim_Stdin := params.Sim_Stdin
-
-	state := Factomd(params, sim_Stdin)
+	state := Factomd(cfg)
 	for state.Running() {
 		time.Sleep(time.Second)
 	}

@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
 	"reflect"
 
 	"github.com/go-ini/ini"
@@ -44,7 +47,8 @@ import (
 //
 type Config struct {
 	Factomd struct {
-		Network                  string `def:"MAIN" f:"network" short:"n" hint:"The name of the network to connect to, such as MAIN, LOCAL, TEST, or fct_community_test"`
+		Network string `def:"MAIN" f:"network" short:"n" hint:"The name of the network to connect to, such as MAIN, LOCAL, TEST, or fct_community_test"`
+		// homedir has OS-dependent default, see DefaultHomeDir() below
 		HomeDir                  string `def:"" short:"h" hint:"The path to the working directory where factom will place all files"`
 		BlockTime                int    `def:"10m" f:"time" min:"1" short:"b" hint:"The time it takes to build one directory block"`
 		FaultTimeout             int    `def:"1m" f:"time" hint:"How long to wait before federated servers are considered inactive"`
@@ -84,12 +88,12 @@ type Config struct {
 		DBExportDataPath string `def:"database/export" hint:"Sub-path relative to HomeDir for exporting data"`
 		DBDataStorePath  string `def:"data/export" hint:"Sub-path relative to HomeDir for the block extractor"`
 		DBNoFastBoot     bool   `def:"false" short:"fb" hint:"Disable the use of the FastBoot file to cache block validation"`
-		DBFastBootRate   int    `def:"1000" min:"1" hint:"Create a FastBoot entry every X blocks"`
+		DBFastBootRate   int    `def:"1000" min:"2" max:"5000" hint:"Create a FastBoot entry every X blocks"`
 
 		P2PDisable          bool   `def:"false" hint:"Disable the peer to peer network"`
 		P2PPeerFileSuffix   string `def:"peers.json" hint:"The filename suffix of the peers file which is added to the current network"`
 		P2PPort             int    `def:"8108" min:"1" hint:"The default port used for network connections"`
-		P2PSeed             string `def:"" f:"url" hint:"The URL of the seed file to use for bootstrapping"`
+		P2PSeed             string `def:"https://raw.githubusercontent.com/FactomProject/factomproject.github.io/master/seed/mainseed.txt" f:"url" hint:"The URL of the seed file to use for bootstrapping"`
 		P2PFanout           int    `def:"16" min:"1" hint:"How many peers to broadcast messages to"`
 		P2PSpecialPeers     string `def:"" f:"ipport" list:"," short:"p" hint:"A comma-separated list of peers that the node will always connect to in the format of \"host:port\"\nExample to add four special peers: \"123.456.78.9:8108,97.86.54.32:8108,56.78.91.23:8108,hostname:8108\""`
 		P2PConnectionPolicy string `def:"NORMAL" enum:"NORMAL,ACCEPT,REFUSE" hint:"Which peers the node should allow.\n  NORMAL: allows all connections\n  ACCEPT: the node accepts incoming connection but only dials to special peers\n  REFUSE: the node dials to special peers but refuses all incoming connections\n"`
@@ -116,7 +120,7 @@ type Config struct {
 
 		DebugConsole     string `def:"OFF" enum:"OFF,LOCAL,ON" hint:"The mode of the debug console.\n  OFF: no debug console\n  LOCAL: only accepts connections from localhost and launches a terminal\n  ON: accepts remote connections\n"`
 		DebugConsolePort int    `def:"8093" min:"1" max:"65535" hint:"The port to launch the console server"`
-		ChainHeadFix     bool   `def:"ON" enum:"OFF,IGNORE,ON" hint:"The behavior of validating chain heads on boot\n  OFF: don't check at all\n  IGNORE: check but don't fix\n  ON: check and automatically fix invalid chain heads\n"`
+		ChainHeadFix     string `def:"ON" enum:"OFF,IGNORE,ON" hint:"The behavior of validating chain heads on boot\n  OFF: don't check at all\n  IGNORE: check but don't fix\n  ON: check and automatically fix invalid chain heads\n"`
 		OneLeader        bool   `def:"false" hint:"If enabled, all entries for one factom-minute will be handled by a VM index 0 instead of being distributed over all VMs"`
 		KeepMismatch     bool   `def:"false" hint:"Keep the node's DBState even if the signature doesn't match with the majority"`
 		ForceSync2Height int    `def:"-1" min:"-1" hint:"Force the height on the second pass sync. Set to -1 to disable, 0 to force a complete sync"`
@@ -156,11 +160,40 @@ func DefaultConfig() *Config {
 		return fmt.Errorf("config.Config struct has no \"def\" tag for variable %s", field.Name)
 	})
 
+	c.Factomd.HomeDir = DefaultHomeDir()
+
 	if err != nil {
 		panic(err)
 	}
 
 	return c
+}
+
+func DefaultHomeDir() string {
+	return filepath.Join(HomeDir(), ".factom/m2")
+}
+
+func HomeDir() string {
+	env := os.Getenv("FACTOM_HOME")
+	if env != "" {
+		return env
+	}
+
+	// Get the OS specific home directory via the Go standard lib.
+	var home string
+	usr, err := user.Current()
+	if err == nil {
+		home = usr.HomeDir
+	}
+
+	// Fall back to standard HOME environment variable that works
+	// for most POSIX OSes if the directory from the Go standard
+	// lib failed.
+	if err != nil || home == "" {
+		home = os.Getenv("HOME")
+	}
+
+	return home
 }
 
 func (c *Config) walk(do func(category reflect.StructField, field reflect.StructField, val reflect.Value) error) error {
@@ -244,4 +277,31 @@ func (c *Config) addFlags(flags *Flags) error {
 		// default is already set
 		return nil
 	})
+}
+
+// PrintSettings writes the current configuration to the console.
+// If abridged is set, it only writes parameters that deviate from the default.
+func (c *Config) PrintSettings(abridged bool) {
+	fmt.Println("Configuration:")
+	var curcat string
+	c.walk(func(category reflect.StructField, field reflect.StructField, val reflect.Value) error {
+		if def, ok := field.Tag.Lookup("def"); abridged && ok && val.String() == def {
+			return nil
+		}
+		if category.Name != curcat {
+			fmt.Printf("[%s]\n", category.Name)
+			curcat = category.Name
+		}
+		fmt.Printf(" %20s = %s", field.Name, val)
+
+		return nil
+	})
+}
+
+func (c *Config) HomePath(path string) string {
+	return filepath.Join(c.Factomd.HomeDir, path)
+}
+
+func (c *Config) SlugPath(path string) string {
+	return filepath.Join(c.Factomd.HomeDir, path, c.Factomd.Network, "-")
 }

@@ -109,7 +109,10 @@ func LoadConfig() Config {
 		}
 		//		}
 	} else {
-		file = ini.Empty()
+		file, err = ini.InsensitiveLoad([]byte(defaultConfig))
+		if err != nil {
+			panic(fmt.Sprintf("error in the default ini: %v", err))
+		}
 	}
 
 	// determine network from file and flags
@@ -132,6 +135,10 @@ func LoadConfig() Config {
 
 	if unused := flags.Unused(); len(unused) > 0 {
 		Shutdown(fmt.Errorf("Unknown command line parameter: %s", unused[0]))
+	}
+
+	if !filepath.IsAbs(cfg.Factomd.HomeDir) {
+		cfg.Factomd.HomeDir = filepath.Join(DefaultHomeDir(), cfg.Factomd.HomeDir)
 	}
 
 	return *cfg

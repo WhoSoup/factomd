@@ -135,6 +135,29 @@ func set(target reflect.Value, val string, tag reflect.StructTag) (err error) {
 			if err != nil {
 				return err // local err
 			}
+
+			if min, ok := tag.Lookup("min"); ok {
+				mmin, err := strconv.Atoi(min)
+				if err != nil { // developer error when writing config
+					return err
+				}
+
+				if v < mmin {
+					return fmt.Errorf("%d is less than the minimum of %d", v, mmin)
+				}
+			}
+
+			if max, ok := tag.Lookup("max"); ok {
+				mmax, err := strconv.Atoi(max)
+				if err != nil { // developer error when writing config
+					return err
+				}
+
+				if v > mmax {
+					return fmt.Errorf("%d is more than the maximum of %d", v, mmax)
+				}
+			}
+
 			target.SetInt(int64(v))
 		}
 	case reflect.Bool:

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/FactomProject/factomd/config"
+
 	. "github.com/FactomProject/factomd/common/globals"
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
@@ -45,7 +47,7 @@ var packageLogger = log.WithFields(log.Fields{"package": "engine"})
 var Build string
 var FactomdVersion string = "BuiltWithoutVersion"
 
-func Factomd(params *FactomParams, listenToStdin bool) interfaces.IState {
+func Factomd(cfg config.Config) interfaces.IState {
 	fmt.Printf("Go compiler version: %s\n", runtime.Version())
 	fmt.Printf("Using build: %s\n", Build)
 	fmt.Printf("Version: %s\n", FactomdVersion)
@@ -62,7 +64,7 @@ func Factomd(params *FactomParams, listenToStdin bool) interfaces.IState {
 	state0.SetMessageFilterTimestamp(state0.TimestampAtBoot)
 	state0.EFactory = new(electionMsgs.ElectionsFactory)
 
-	NetStart(state0, params, listenToStdin)
+	NetStart(state0, cfg)
 	return state0
 }
 
