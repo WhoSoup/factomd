@@ -644,6 +644,10 @@ func (c *Controller) updateMetrics() {
 					PeerType:         metrics.PeerType,
 					ConnectionState:  metrics.ConnectionState,
 					ConnectionNotes:  metrics.ConnectionNotes,
+					NewBytesUp:       metrics.NewBytesUp,
+					NewBytesDown:     metrics.NewBytesDown,
+					NewMsgSent:       metrics.NewMsgSent,
+					NewMsgRecv:       metrics.NewMsgRecv,
 				}
 			}
 		}

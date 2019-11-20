@@ -48,6 +48,7 @@ type Connection struct {
 	isPersistent    bool              // Persistent connections we always redail.
 	notes           string            // Notes about the connection, for debugging (eg: error)
 	metrics         ConnectionMetrics // Metrics about this connection
+	metricsRW       *MetricsReadWriter
 
 	// logging
 	logger *log.Entry
@@ -111,6 +112,10 @@ type ConnectionMetrics struct {
 	// Green: > 100
 	ConnectionState string // Basic state of the connection
 	ConnectionNotes string // Connectivity notes for the connection
+	NewBytesDown    float64
+	NewBytesUp      float64
+	NewMsgSent      float64
+	NewMsgRecv      float64
 }
 
 // ConnectionCommand is used to instruct the Connection to carry out some functionality.
@@ -344,8 +349,10 @@ func (c *Connection) goOnline() {
 	c.logger.Info("Connected to a remote peer")
 	p2pConnectionOnlineCall.Inc()
 	now := time.Now()
-	c.encoder = gob.NewEncoder(c.conn)
-	c.decoder = gob.NewDecoder(c.conn)
+	metricsrw := NewMetricsReadWriter(c.conn)
+	c.encoder = gob.NewEncoder(metricsrw)
+	c.decoder = gob.NewDecoder(metricsrw)
+	c.metricsRW = metricsrw
 	c.attempts = 0
 	c.timeLastPing = now
 	c.timeLastAttempt = now
@@ -694,6 +701,12 @@ func (c *Connection) updateStats() {
 		c.metrics.PeerType = c.peer.PeerTypeString()
 		c.metrics.ConnectionState = connectionStateStrings[c.state]
 		c.metrics.ConnectionNotes = c.notes
+
+		mw, mr, bw, br := c.metricsRW.Collect()
+		c.metrics.NewBytesDown = float64(br)
+		c.metrics.NewBytesUp = float64(bw)
+		c.metrics.NewMsgRecv = float64(mr)
+		c.metrics.NewMsgSent = float64(mw)
 		c.logger.Debugf("updatePeer() SENDING ConnectionUpdateMetrics - Bytes Sent: %d Bytes Received: %d", c.metrics.BytesSent, c.metrics.BytesReceived)
 		BlockFreeChannelSend(c.ReceiveChannel, ConnectionCommand{Command: ConnectionUpdateMetrics, Metrics: c.metrics})
 	}
