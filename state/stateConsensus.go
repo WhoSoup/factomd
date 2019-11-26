@@ -1109,10 +1109,12 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 			s.DBStatesReceived = append(s.DBStatesReceived, nil)
 		}
 		s.DBStatesReceived[ix] = dbstatemsg
+		s.CatchupNotify <- WaitingNotice{Height: dbheight, Status: WaitingArrived}
 		return
 	case -1:
 		s.LogPrintf("dbstateprocess", "FollowerExecuteDBState Invalid %d", dbheight)
 		cntFail()
+		s.CatchupNotify <- WaitingNotice{Height: dbheight, Status: WaitingFailed}
 		if dbstatemsg.IsLast { // this is the last DBState in this load
 			panic(fmt.Sprintf("%20s The last DBState %d saved to the database was not valid.", s.FactomNodeName, dbheight))
 		}
@@ -1223,6 +1225,7 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 	// At this point the block is good, make sure not to ask for it anymore
 	if !dbstatemsg.IsInDB {
 		s.StatesReceived.Notify <- msg.(*messages.DBStateMsg)
+		s.CatchupNotify <- WaitingNotice{Height: dbheight, Status: WaitingProcessed}
 	}
 	s.DBStates.UpdateState()
 

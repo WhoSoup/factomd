@@ -309,6 +309,7 @@ type State struct {
 	StatesMissing  *StatesMissing
 	StatesWaiting  *StatesWaiting
 	StatesReceived *StatesReceived
+	CatchupNotify  chan WaitingNotice
 
 	// Having all the state for a particular directory block stored in one structure
 	// makes creating the next state, updating the various states, and setting up the next
@@ -1061,6 +1062,7 @@ func (s *State) Init() {
 	s.StatesMissing = NewStatesMissing()
 	s.StatesWaiting = NewStatesWaiting()
 	s.StatesReceived = NewStatesReceived()
+	s.CatchupNotify = make(chan WaitingNotice, 60)
 
 	switch s.NodeMode {
 	case "FULL":
