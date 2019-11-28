@@ -1100,6 +1100,8 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 
 	valid := pdbstate.ValidNext(s, dbstatemsg)
 
+	s.CatchupNotify <- CatchupNotice{Height: dbheight, Status: CatchupArrived}
+
 	switch valid {
 	case 0:
 		s.LogPrintf("dbstateprocess", "FollowerExecuteDBState hold for later %d", dbheight)
@@ -1113,6 +1115,7 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 	case -1:
 		s.LogPrintf("dbstateprocess", "FollowerExecuteDBState Invalid %d", dbheight)
 		cntFail()
+		s.CatchupNotify <- CatchupNotice{Height: dbheight, Status: CatchupFailed}
 		if dbstatemsg.IsLast { // this is the last DBState in this load
 			panic(fmt.Sprintf("%20s The last DBState %d saved to the database was not valid.", s.FactomNodeName, dbheight))
 		}
@@ -1138,6 +1141,7 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 		dbstatemsg.Entries)
 	if dbstate == nil {
 		//s.AddStatus(fmt.Sprintf("FollowerExecuteDBState(): dbstate fail at ht %d", dbheight))
+		s.CatchupNotify <- CatchupNotice{Height: dbheight, Status: CatchupFailed}
 		cntFail()
 		return
 	}
@@ -1163,6 +1167,7 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 		if i > 0 && // Don't test the coinbase TX
 			((dbheight > 0 && dbheight < 2000) || dbheight > 100000) && // Test the first 2000 blks, so we can unit test, then after
 			!valid { // 100K for the running system.  If a TX isn't valid, ignore.
+			s.CatchupNotify <- CatchupNotice{Height: dbheight, Status: CatchupFailed}
 			return //Totally ignore the block if it has a double spend.
 		}
 	}
@@ -1221,9 +1226,10 @@ func (s *State) FollowerExecuteDBState(msg interfaces.IMsg) {
 	s.Saving = true
 
 	// At this point the block is good, make sure not to ask for it anymore
-	if !dbstatemsg.IsInDB {
+	/*if !dbstatemsg.IsInDB {
 		s.StatesReceived.Notify <- msg.(*messages.DBStateMsg)
-	}
+	}*/
+	s.CatchupNotify <- CatchupNotice{Height: dbheight, Status: CatchupSynced}
 	s.DBStates.UpdateState()
 
 }

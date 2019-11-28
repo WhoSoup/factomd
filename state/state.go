@@ -309,6 +309,7 @@ type State struct {
 	StatesMissing  *StatesMissing
 	StatesWaiting  *StatesWaiting
 	StatesReceived *StatesReceived
+	CatchupNotify  chan CatchupNotice
 
 	// Having all the state for a particular directory block stored in one structure
 	// makes creating the next state, updating the various states, and setting up the next
@@ -1061,6 +1062,7 @@ func (s *State) Init() {
 	s.StatesMissing = NewStatesMissing()
 	s.StatesWaiting = NewStatesWaiting()
 	s.StatesReceived = NewStatesReceived()
+	s.CatchupNotify = make(chan CatchupNotice, 60)
 
 	switch s.NodeMode {
 	case "FULL":
@@ -1152,7 +1154,8 @@ func (s *State) Init() {
 	s.Println("\nExchange rate Authority Public Key set to ", s.ExchangeRateAuthorityPublicKey)
 
 	// We want this run after the network settings are configured
-	go s.DBStates.Catchup() // Launch in go routine as it blocks until we are synced from disk
+	//go s.DBStates.Catchup() // Launch in go routine as it blocks until we are synced from disk
+	go s.DBStates.BetterCatchup()
 
 	s.AuditHeartBeats = make([]interfaces.IMsg, 0)
 
