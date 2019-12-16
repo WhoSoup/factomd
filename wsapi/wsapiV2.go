@@ -923,7 +923,7 @@ func HandleV2EntryBlock(state interfaces.IState, params interface{}) (interface{
 	n := time.Now()
 	defer HandleV2APICallEblock.Observe(float64(time.Since(n).Nanoseconds()))
 
-	keymr := new(KeyMRRequest)
+	keymr := new(EBlockOptional)
 	err := MapToObject(params, keymr)
 	if err != nil {
 		return nil, NewInvalidParamsError()
@@ -984,6 +984,27 @@ func HandleV2EntryBlock(state interfaces.IState, params interface{}) (interface{
 			l := new(EntryAddr)
 			l.EntryHash = v.String()
 			estack = append(estack, *l)
+		}
+	}
+
+	// caller also wants the entries
+	if keymr.GetEntries {
+		for _, v := range block.GetBody().GetEBEntries() {
+			if _, exists := mins[v.String()]; exists {
+				continue
+			}
+
+			entry, err := state.FetchEntryByHash(v)
+			if err != nil {
+				continue
+			}
+
+			var er EntryBlockResponseEntry
+			er.Content = hex.EncodeToString(entry.GetContent())
+			for _, extid := range entry.ExternalIDs() {
+				er.ExtIDs = append(er.ExtIDs, hex.EncodeToString(extid))
+			}
+			e.EntryData = append(e.EntryData, er)
 		}
 	}
 

@@ -121,7 +121,12 @@ type EntryBlockResponse struct {
 		Timestamp           int64  `json:"timestamp"`
 		DBHeight            int64  `json:"dbheight"`
 	} `json:"header"`
-	EntryList []EntryAddr `json:"entrylist"`
+	EntryList []EntryAddr               `json:"entrylist"`
+	EntryData []EntryBlockResponseEntry `json:"entrydata,omitifempty"`
+}
+type EntryBlockResponseEntry struct {
+	Content string   `json:"content"`
+	ExtIDs  []string `json:"extids"`
 }
 
 type EntryCreditBlockResponse struct {
@@ -396,4 +401,9 @@ type AuditStatus struct {
 
 type MessageFilter struct {
 	Params string `json:"params"`
+}
+
+type EBlockOptional struct {
+	KeyMRRequest
+	GetEntries bool `json:"getentries"`
 }
