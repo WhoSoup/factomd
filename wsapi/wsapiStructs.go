@@ -121,8 +121,8 @@ type EntryBlockResponse struct {
 		Timestamp           int64  `json:"timestamp"`
 		DBHeight            int64  `json:"dbheight"`
 	} `json:"header"`
-	EntryList []EntryAddr               `json:"entrylist"`
-	EntryData []EntryBlockResponseEntry `json:"entrydata,omitifempty"`
+	EntryList []EntryAddr                        `json:"entrylist"`
+	EntryData map[string]EntryBlockResponseEntry `json:"entrydata,omitifempty"`
 }
 type EntryBlockResponseEntry struct {
 	Content string   `json:"content"`

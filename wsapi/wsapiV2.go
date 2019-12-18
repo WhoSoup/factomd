@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/FactomProject/factomd/anchor"
@@ -989,23 +990,49 @@ func HandleV2EntryBlock(state interfaces.IState, params interface{}) (interface{
 
 	// caller also wants the entries
 	if keymr.GetEntries {
-		for _, v := range block.GetBody().GetEBEntries() {
-			if _, exists := mins[v.String()]; exists {
-				continue
-			}
+		start := time.Now()
+		e.EntryData = make(map[string]EntryBlockResponseEntry)
+		var wg sync.WaitGroup
+		var mtx sync.Mutex
+		work := make(chan int, len(block.GetBody().GetEBEntries()))
+		wg.Add(len(block.GetBody().GetEBEntries()))
 
-			entry, err := state.FetchEntryByHash(v)
-			if err != nil {
-				continue
-			}
-
-			var er EntryBlockResponseEntry
-			er.Content = hex.EncodeToString(entry.GetContent())
-			for _, extid := range entry.ExternalIDs() {
-				er.ExtIDs = append(er.ExtIDs, hex.EncodeToString(extid))
-			}
-			e.EntryData = append(e.EntryData, er)
+		for i := range block.GetBody().GetEBEntries() {
+			work <- i
 		}
+
+		for i := 0; i < 8; i++ {
+			go func() {
+				for ei := range work {
+					v := block.GetBody().GetEBEntries()[ei]
+					if _, exists := mins[v.String()]; exists {
+						wg.Done()
+						continue
+					}
+
+					entry, err := state.FetchEntryByHash(v)
+					if err != nil {
+						wg.Done()
+						continue
+					}
+
+					var er EntryBlockResponseEntry
+					er.Content = hex.EncodeToString(entry.GetContent())
+					for _, extid := range entry.ExternalIDs() {
+						er.ExtIDs = append(er.ExtIDs, hex.EncodeToString(extid))
+					}
+					mtx.Lock()
+					e.EntryData[v.String()] = er
+					mtx.Unlock()
+					wg.Done()
+				}
+			}()
+		}
+
+		wg.Wait()
+		close(work)
+
+		fmt.Println("API side:", time.Since(start))
 	}
 
 	return e, nil
