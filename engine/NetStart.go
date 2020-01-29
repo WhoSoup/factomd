@@ -431,6 +431,12 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 
 	}
 
+	// Start live feed service
+	config := s.Cfg.(*util.FactomdConfig)
+	if config.LiveFeedAPI.EnableLiveFeedAPI || p.EnableLiveFeedAPI {
+		s.EventService.ConfigService(s, config, p)
+	}
+
 	networkpattern = p.Net
 
 	switch p.Net {
@@ -570,7 +576,6 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	}
 
 	// Anchoring related configurations
-	config := s.Cfg.(*util.FactomdConfig)
 	if len(config.App.BitcoinAnchorRecordPublicKeys) > 0 {
 		err := s.GetDB().(*databaseOverlay.Overlay).SetBitcoinAnchorRecordPublicKeysFromHex(config.App.BitcoinAnchorRecordPublicKeys)
 		if err != nil {

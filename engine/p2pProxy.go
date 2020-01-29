@@ -52,6 +52,7 @@ type FactomMessage struct {
 	PeerHash string
 	AppHash  string
 	AppType  string
+	msg      interfaces.IMsg // Keep the original message for debugging and peer selection optimization
 }
 
 func (e *FactomMessage) JSONByte() ([]byte, error) {
@@ -121,8 +122,7 @@ func (f *P2PProxy) Send(msg interfaces.IMsg) error {
 	} else {
 		hash := fmt.Sprintf("%x", msg.GetMsgHash().Bytes())
 		appType := fmt.Sprintf("%d", msg.Type())
-		//fmt.Println("PROXY SEND:", msg.String())
-		message := FactomMessage{Message: data, PeerHash: msg.GetNetworkOrigin(), AppHash: hash, AppType: appType}
+		message := FactomMessage{Message: data, PeerHash: msg.GetNetworkOrigin(), AppHash: hash, AppType: appType, msg: msg}
 		switch {
 		case !msg.IsPeer2Peer() && msg.IsFullBroadcast():
 			msgLogger.Debug("Sending full broadcast message")
