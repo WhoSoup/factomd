@@ -1,10 +1,7 @@
 package p2p
 
 import (
-	"fmt"
 	"math/rand"
-	"net/http"
-	"sort"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -21,12 +18,10 @@ type Network struct {
 
 	conf       *Configuration
 	controller *controller
-	seed       *seed
 
 	prom *Prometheus
 
 	metricsHook func(pm map[string]PeerMetrics)
-	measure     *Measure
 
 	rng        *rand.Rand
 	instanceID uint64
@@ -37,95 +32,6 @@ type Network struct {
 }
 
 var packageLogger = log.WithField("package", "p2p")
-
-// DebugMessage is temporary
-func (n *Network) DebugMessage() (string, string, int) {
-	hv := ""
-	s := n.controller.peers.Slice()
-	r := fmt.Sprintf("\nONLINE: (%d/%d/%d)\n", len(s), n.conf.Target, n.conf.Max)
-	count := len(s)
-	for _, p := range s {
-
-		metrics := p.GetMetrics()
-		r += fmt.Sprintf("\tPeer %s (MPS %.2f/%.2f) (BPS %.2f/%.2f) (Cap %.2f)\n", p.String(), metrics.MPSDown, metrics.MPSUp, metrics.BPSDown, metrics.BPSUp, metrics.Capacity)
-		edge := ""
-		if n.conf.NodeID < 4 || p.NodeID < 4 {
-			min := n.conf.NodeID
-			if p.NodeID < min {
-				min = p.NodeID
-			}
-			if min != 0 {
-				color := []string{"red", "green", "blue"}[min-1]
-				edge = fmt.Sprintf(" {color:%s, weight=3}", color)
-			}
-		}
-		if p.IsIncoming {
-			hv += fmt.Sprintf("%s -> %s:%s%s\n", p.Endpoint, n.conf.BindIP, n.conf.ListenPort, edge)
-		} else {
-			hv += fmt.Sprintf("%s:%s -> %s%s\n", n.conf.BindIP, n.conf.ListenPort, p.Endpoint, edge)
-		}
-	}
-	known := ""
-	/*for _, ip := range n.controller.endpoints.IPs() {
-		known += ip.Address + " "
-	}*/
-	r += "\nKNOWN:\n" + known
-
-	/*banned := ""
-	for ip, time := range n.controller.endpoints.Bans {
-		banned += fmt.Sprintf("\t%s %s\n", ip, time)
-	}
-	r += "\nBANNED:\n" + banned*/
-	return r, hv, count
-}
-
-// DebugServer is temporary
-func DebugServer(n *Network) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/debug", func(rw http.ResponseWriter, req *http.Request) {
-		a, _, _ := n.DebugMessage()
-		rw.Write([]byte(a))
-	})
-
-	mux.HandleFunc("/stats", func(rw http.ResponseWriter, req *http.Request) {
-		out := ""
-		out += fmt.Sprintf("Channels\n")
-		out += fmt.Sprintf("\tToNetwork: %d / %d\n", len(n.ToNetwork), cap(n.ToNetwork))
-		out += fmt.Sprintf("\tFromNetwork: %d / %d\n", len(n.FromNetwork), cap(n.FromNetwork))
-		out += fmt.Sprintf("\tpeerData: %d / %d\n", len(n.controller.peerData), cap(n.controller.peerData))
-		out += fmt.Sprintf("\nPeers (%d)\n", n.controller.peers.Total())
-
-		slice := n.controller.peers.Slice()
-		sort.Slice(slice, func(i, j int) bool {
-			return slice[i].connected.Before(slice[j].connected)
-		})
-
-		for _, p := range slice {
-			out += fmt.Sprintf("\t%s\n", p.Endpoint)
-			out += fmt.Sprintf("\t\tsend: %d / %d\n", len(p.send), cap(p.send))
-			m := p.GetMetrics()
-			out += fmt.Sprintf("\t\tBytesReceived: %d\n", m.BytesReceived)
-			out += fmt.Sprintf("\t\tBytesSent: %d\n", m.BytesSent)
-			out += fmt.Sprintf("\t\tMessagesSent: %d\n", m.MessagesSent)
-			out += fmt.Sprintf("\t\tMessagesReceived: %d\n", m.MessagesReceived)
-			out += fmt.Sprintf("\t\tMomentConnected: %s\n", m.MomentConnected)
-			out += fmt.Sprintf("\t\tPeerQuality: %d\n", m.PeerQuality)
-			out += fmt.Sprintf("\t\tIncoming: %v\n", m.Incoming)
-			out += fmt.Sprintf("\t\tLastReceive: %s\n", m.LastReceive)
-			out += fmt.Sprintf("\t\tLastSend: %s\n", m.LastSend)
-			out += fmt.Sprintf("\t\tMPS Down: %.2f\n", m.MPSDown)
-			out += fmt.Sprintf("\t\tMPS Up: %.2f\n", m.MPSUp)
-			out += fmt.Sprintf("\t\tBPS Down: %.2f\n", m.BPSDown)
-			out += fmt.Sprintf("\t\tBPS Up: %.2f\n", m.BPSUp)
-			out += fmt.Sprintf("\t\tCapacity: %.2f\n", m.Capacity)
-			out += fmt.Sprintf("\t\tDropped: %d\n", m.Dropped)
-		}
-
-		rw.Write([]byte(out))
-	})
-
-	go http.ListenAndServe("localhost:8070", mux)
-}
 
 // NewNetwork initializes a new network with the given configuration.
 // The passed Configuration is copied and cannot be modified afterwards.
@@ -145,7 +51,6 @@ func NewNetwork(conf Configuration) (*Network, error) {
 		n.prom = new(Prometheus)
 		n.prom.Setup()
 	}
-	n.measure = NewMeasure(time.Second * 15)
 	n.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	// generate random instanceid for loopback detection
 	n.instanceID = n.rng.Uint64()
@@ -202,7 +107,6 @@ func (n *Network) Run() {
 
 	n.controller.Start() // this will get peer manager ready to handle incoming connections
 	//DebugServer(n)
-	go n.route()
 }
 
 func (n *Network) Stop() {
@@ -226,16 +130,13 @@ func (n *Network) Disconnect(hash string) {
 	go n.controller.disconnect(hash)
 }
 
-// AddSpecial takes a set of ip addresses that should be treated as special.
+// SetSpecial takes a set of ip addresses that should be treated as special.
 // Network will always attempt to have a connection to a special peer.
 // Format is a single line of ip addresses and ports, separated by semicolon, eg
-// "127.0.0.1:8088;8.8.8.8;192.168.0.1:8110"
-//
-// The port is optional and the entire ip will be considered special if no port is
-// provided
-func (n *Network) AddSpecial(raw string) {
+// "127.0.0.1:8088;8.0.8.8:8088;192.168.0.1:8110"
+func (n *Network) SetSpecial(raw string) {
 	n.logger.Debugf("Received new list of special peers from application: %s", raw)
-	go n.controller.addSpecial(raw)
+	go n.controller.setSpecial(raw)
 }
 
 // Total returns the number of active connections
@@ -246,25 +147,4 @@ func (n *Network) Total() int {
 // Rounds returns the total number of CAT rounds that have occurred
 func (n *Network) Rounds() int {
 	return n.controller.rounds
-}
-
-// route Takes messages from the network's ToNetwork channel and routes it
-// to the controller via the appropriate function
-func (n *Network) route() {
-	for {
-		// blocking read on ToNetwork, and c.stopRoute
-		select {
-		case message := <-n.ToNetwork:
-			switch message.Address {
-			case FullBroadcast:
-				n.controller.Broadcast(message, true)
-			case Broadcast:
-				n.controller.Broadcast(message, false)
-			case RandomPeer:
-				n.controller.ToPeer("", message)
-			default:
-				n.controller.ToPeer(message.Address, message)
-			}
-		}
-	}
 }

@@ -191,7 +191,6 @@ func NetStart(s *state.State, p *FactomParams, listenToStdin bool) {
 	p2pconf.Fanout = 16
 	p2pconf.ChannelCapacity = 1000
 	p2pconf.PingInterval = time.Second * 15
-	p2pconf.PersistInterval = time.Second * 30
 
 	fmt.Println(">>>>>>>>>>>>>>>>")
 	fmt.Println(">>>>>>>>>>>>>>>> Net Sim Start!")

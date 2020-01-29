@@ -5,6 +5,39 @@ import (
 	"time"
 )
 
+// runs a single CAT round that persists peers and drops random connections.
+// this function is triggered once a second by the controller.run function
+func (c *controller) runCatRound() {
+	if time.Since(c.lastRound) < c.net.conf.RoundTime {
+		return
+	}
+	c.lastRound = time.Now()
+	c.logger.Debug("Cat Round")
+	c.rounds++
+
+	c.persistPeerFile()
+
+	peers := c.peers.Slice()
+
+	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
+
+	if toDrop > 0 {
+		perm := c.net.rng.Perm(len(peers))
+
+		dropped := 0
+		for _, i := range perm {
+			if c.isSpecial(peers[i].Endpoint) {
+				continue
+			}
+			peers[i].Stop()
+			dropped++
+			if dropped >= toDrop {
+				break
+			}
+		}
+	}
+}
+
 // processPeers processes a peer share response
 func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 	list, err := peer.prot.ParsePeerShare(parcel.Payload)
@@ -15,16 +48,12 @@ func (c *controller) processPeerShare(peer *Peer, parcel *Parcel) []Endpoint {
 
 	c.logger.Debugf("Received peer share from %s: %+v", peer, list)
 
-	// cycles through list twice but we don't want to add any if one of them is bad
+	var res []Endpoint
 	for _, p := range list {
 		if !p.Valid() {
 			c.logger.Infof("Peer %s tried to send us peer share with bad data: %s", peer, p)
 			return nil
 		}
-	}
-
-	var res []Endpoint
-	for _, p := range list {
 		ep, err := NewEndpoint(p.IP, p.Port)
 		if err != nil {
 			c.logger.WithError(err).Infof("Unable to register endpoint %s:%s from peer %s", p.IP, p.Port, peer)
@@ -87,35 +116,6 @@ func (c *controller) sharePeers(peer *Peer, list []Endpoint) {
 	peer.Send(parcel)
 }
 
-func (c *controller) runCatRound() {
-	if time.Since(c.lastRound) < c.net.conf.RoundTime {
-		return
-	}
-	c.lastRound = time.Now()
-
-	c.logger.Debug("Cat Round")
-	c.rounds++
-	peers := c.peers.Slice()
-
-	toDrop := len(peers) - int(c.net.conf.Drop) // current - target amount
-
-	if toDrop > 0 {
-		perm := c.net.rng.Perm(len(peers))
-
-		dropped := 0
-		for _, i := range perm {
-			if c.isSpecial(peers[i].Endpoint) {
-				continue
-			}
-			peers[i].Stop()
-			dropped++
-			if dropped >= toDrop {
-				break
-			}
-		}
-	}
-}
-
 // this function is only intended to be run single-threaded inside the replenish loop
 // it works by creating a closure that contains a channel specific for this call
 // the closure is called in controller.manageData
@@ -160,6 +160,19 @@ func (c *controller) catReplenish() {
 		return c.peers.Connected(ep) || c.isBannedEndpoint(ep) || !c.dialer.CanDial(ep)
 	}
 
+	// bootstrap
+	if len(c.bootstrap) > 0 {
+		c.logger.Infof("Attempting to connect to %d peers from bootstrap", len(c.bootstrap))
+		for _, e := range c.bootstrap {
+			if !deny(e) {
+				_, _ = c.Dial(e)
+			}
+		}
+		c.bootstrap = nil
+	}
+
+	lastReseed := time.Now()
+
 	for {
 		var connect []Endpoint
 		if uint(c.peers.Total()) >= c.net.conf.Target {
@@ -167,17 +180,41 @@ func (c *controller) catReplenish() {
 			continue
 		}
 
-		if uint(c.peers.Total()) <= c.net.conf.MinReseed {
+		// reseed if necessary
+		min := c.net.conf.MinReseed
+		if uint(c.seed.size()) < min {
+			min = uint(c.seed.size()) - 1
+		}
+
+		// try special first
+		for _, sp := range c.specialEndpoints {
+			if deny(sp) {
+				continue
+			}
+			connect = append(connect, sp)
+		}
+
+		if uint(c.peers.Total()) <= min || time.Since(lastReseed) > c.net.conf.PeerReseedInterval {
 			seeds := c.seed.retrieve()
+			// shuffle to hit different seeds
+			c.net.rng.Shuffle(len(seeds), func(i, j int) {
+				seeds[i], seeds[j] = seeds[j], seeds[i]
+			})
 			for _, s := range seeds {
 				if deny(s) {
 					continue
 				}
 				connect = append(connect, s)
 			}
+			lastReseed = time.Now()
 		}
 
-		if len(connect) == 0 {
+		// if we connect to a peer that's full it gives us some alternatives
+		// left unchecked, this can be a very long loop, therefore we are limiting it
+		// sum(special, seeds) + 5 more
+		var attemptsLimit = len(connect) + 5
+
+		if c.peers.Total() > 0 {
 			rand := c.randomPeersConditional(1, func(p *Peer) bool {
 				return time.Since(p.lastPeerSend) >= c.net.conf.PeerRequestInterval
 			})
@@ -200,7 +237,7 @@ func (c *controller) catReplenish() {
 
 		var ep Endpoint
 		var attempts int
-		for len(connect) > 0 && attempts < 4 {
+		for len(connect) > 0 && attempts < attemptsLimit {
 			ep = connect[0]
 			connect = connect[1:]
 
@@ -222,38 +259,8 @@ func (c *controller) catReplenish() {
 
 		connect = nil
 
-		if attempts == 0 {
+		if attempts == 0 { // no peers and we exhausted special and seeds
 			time.Sleep(time.Second)
 		}
 	}
-}
-
-func (c *controller) selectBroadcastPeers(count uint) []*Peer {
-	peers := c.peers.Slice()
-
-	// not enough to randomize
-	if uint(len(peers)) <= count {
-		return peers
-	}
-
-	var special []*Peer
-	var regular []*Peer
-
-	for _, p := range peers {
-		if c.isSpecial(p.Endpoint) {
-			special = append(special, p)
-		} else {
-			regular = append(regular, p)
-		}
-	}
-
-	if uint(len(regular)) < count {
-		return append(special, regular...)
-	}
-
-	c.net.rng.Shuffle(len(regular), func(i, j int) {
-		regular[i], regular[j] = regular[j], regular[i]
-	})
-
-	return append(special, regular[:count]...)
 }

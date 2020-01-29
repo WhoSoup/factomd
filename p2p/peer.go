@@ -56,8 +56,6 @@ type Peer struct {
 
 	// logging
 	logger *log.Entry
-
-	PrevMsgs Last100 `json:"-"`
 }
 
 func newPeer(net *Network, status chan peerStatus, data chan peerParcel) *Peer {

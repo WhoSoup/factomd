@@ -11,7 +11,6 @@ func (c *controller) run() {
 	defer c.logger.Error("Stop run()")
 
 	for {
-		c.runPersist()
 		c.runCatRound()
 		c.runMetrics()
 		c.runPing()
@@ -22,26 +21,8 @@ func (c *controller) run() {
 	}
 }
 
-func (c *controller) runPersist() {
-	if c.net.conf.PersistFile == "" {
-		return
-	}
-
-	if time.Since(c.lastPersist) > c.net.conf.PersistInterval {
-		c.lastPersist = time.Now()
-
-		data, err := c.persistData()
-		if err != nil {
-			c.logger.WithError(err).Warn("unable to create peer persist data")
-		} else {
-			err = c.writePersistFile(data)
-			if err != nil {
-				c.logger.WithError(err).Warn("unable to persist peer data")
-			}
-		}
-	}
-}
-
+// the factom network ping behavior is so send a ping message after
+// a specific duration has passed
 func (c *controller) runPing() {
 	for _, p := range c.peers.Slice() {
 		if time.Since(p.lastSend) > c.net.conf.PingInterval {
