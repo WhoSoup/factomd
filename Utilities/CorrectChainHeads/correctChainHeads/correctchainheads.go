@@ -200,3 +200,159 @@ func FindHeads(f tools.Fetcher, conf CorrectChainHeadConfig) {
 		}
 	}
 }
+
+func FindHeads2(f tools.Fetcher, conf CorrectChainHeadConfig) {
+	if conf.Logger == nil {
+		conf.Logger = log.New()
+		conf.Logger.SetLevel(log.InfoLevel)
+	}
+	if conf.PrintFreq == 0 {
+		conf.PrintFreq = 500
+	}
+
+	flog := conf.Logger.WithFields(log.Fields{
+		"tool": "chainheadtool",
+	})
+	checkFloating := conf.CheckFloating
+	fix := conf.Fix
+	var chainHeadsMtx sync.Mutex
+	chainHeads := make(map[string]interfaces.IHash)
+
+	var allEblockLock sync.Mutex
+	allEblks := make(map[[32]byte]interfaces.IHash)
+
+	var err error
+	var dblock interfaces.IDirectoryBlock
+
+	head, err := f.FetchDBlockHead()
+	if err != nil {
+		panic(fmt.Sprintf("Error fetching head"))
+	}
+
+	if head == nil {
+		// No head means database is empty
+		return
+	}
+
+	start := time.Now()
+
+	height := head.GetDatabaseHeight()
+	dblock = head
+	top := height
+	flog.Infof("Checking Chainheads starting at height: %d", height)
+	errCount := new(int32)
+	done := new(int32)
+	total := new(int32)
+
+	heights := make(chan uint32, 128)
+
+	workerCount := 8
+	var workers sync.WaitGroup
+	workerF := func() {
+		defer workers.Done()
+
+		for height := range heights {
+			dblock, err = f.FetchDBlockByHeight(height)
+			if err != nil {
+				flog.Errorf("Error fetching height %d: %s", height, err.Error())
+				continue
+			}
+
+			eblockEnts := dblock.GetEBlockDBEntries()
+			atomic.AddInt32(total, int32(len(eblockEnts)))
+			if checkFloating {
+			EBLoop:
+				for _, eb := range eblockEnts {
+					eblkF, err := f.FetchEBlock(eb.GetKeyMR())
+					if err != nil {
+						flog.Errorf("Error getting eblock %s for %s", eb.GetKeyMR().String(), eb.GetChainID().String())
+						break EBLoop
+					}
+					kmr, err := eblkF.KeyMR()
+					if err != nil {
+						flog.Errorf("Error getting eblock keymr %s for %s", eb.GetKeyMR().String(), eb.GetChainID().String())
+						break EBLoop
+					}
+
+					allEblockLock.Lock()
+					allEblks[kmr.Fixed()] = eblkF.GetHeader().GetPrevKeyMR()
+					allEblockLock.Unlock()
+				}
+			}
+
+			for _, eblk := range eblockEnts {
+				chainHeadsMtx.Lock()
+				if _, ok := chainHeads[eblk.GetChainID().String()]; ok {
+					// Chainhead already exists
+					chainHeadsMtx.Unlock()
+					continue
+				}
+				chainHeads[eblk.GetChainID().String()] = eblk.GetKeyMR()
+				chainHeadsMtx.Unlock()
+
+				ch, err := f.FetchHeadIndexByChainID(eblk.GetChainID())
+				if err != nil {
+					flog.Errorf("Error getting chainhead for %s", eblk.GetChainID().String())
+				} else {
+					if !ch.IsSameAs(eblk.GetKeyMR()) {
+						if fix {
+							f.SetChainHeads([]interfaces.IHash{eblk.GetKeyMR()}, []interfaces.IHash{eblk.GetChainID()})
+							flog.Warnf("{FIXED!} Chainhead found: %s, Expected %s :: For Chain: %s at height %d",
+								ch.String(), eblk.GetKeyMR().String(), eblk.GetChainID().String(), height)
+						} else {
+							flog.Errorf("Chainhead found: %s, Expected %s :: For Chain: %s at height %d",
+								ch.String(), eblk.GetKeyMR().String(), eblk.GetChainID().String(), height)
+						}
+						atomic.AddInt32(errCount, 1)
+					}
+				}
+			}
+			if height%uint32(conf.PrintFreq) == 0 {
+				d := atomic.LoadInt32(done)
+				ps := float64(top-height) / time.Since(start).Seconds()
+				flog.Infof("Currently on %d out of %d at %.3fp/s. %d Eblocks, %d done. %d ChainHeads so far. %d Are bad", height, top, ps, total, d, len(chainHeads), errCount)
+			}
+		}
+	}
+
+	workers.Add(workerCount)
+	for i := 0; i < workerCount; i++ {
+		go workerF()
+	}
+
+	for i := head.GetDatabaseHeight(); i > 0; i-- {
+		heights <- i
+	}
+	close(heights)
+	workers.Wait()
+
+	flog.Infof("%d Chains found in %f seconds", len(chainHeads), time.Since(start).Seconds())
+	if fix {
+		flog.Infof("Chainhead Check Complete. %d Errors corrected while checking for bad heads", errCount)
+	} else {
+		flog.Infof("Chainhead Check Complete. %d Errors found checking for bad heads", errCount)
+	}
+
+	if checkFloating {
+		flog.Infof("Checking all EBLK links")
+		for k, h := range chainHeads {
+			var prev interfaces.IHash
+			prev = h
+			for {
+				if prev.IsZero() {
+					break
+				}
+				p, ok := allEblks[prev.Fixed()]
+				if !ok {
+					flog.Infof("Error finding Eblock %s for chain %s", h.String(), k)
+				}
+				delete(allEblks, prev.Fixed())
+				prev = p
+			}
+		}
+		flog.Infof("Floating Check Complete. %d Eblocks remain unaccounted for", len(allEblks))
+		for k, h := range allEblks {
+			flog.Infof("		|- %x missing. Prev: %s", k, h.String())
+		}
+	}
+}
