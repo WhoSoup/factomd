@@ -5,7 +5,7 @@ import (
 )
 
 type writer struct {
-	c *channel
+	c chan interface{}
 }
 
 var _ pubsub2.IChannelWriter = (*writer)(nil)
@@ -17,6 +17,6 @@ func (w *writer) Write(v interface{}) (err error) {
 		}
 	}()
 
-	w.c.channel <- v
+	w.c <- v
 	return nil
 }

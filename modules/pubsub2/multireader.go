@@ -33,9 +33,7 @@ func (mr *MultiReader) RemoveListener(c <-chan interface{}) {
 	mr.mtx.Lock()
 	for i := range mr.listeners {
 		if mr.listeners[i] == c {
-			// okay to not preserve order
-			mr.listeners[i] = mr.listeners[len(mr.listeners)-1]
-			mr.listeners = mr.listeners[:len(mr.listeners)-1]
+			mr.listeners = append(mr.listeners[:i], mr.listeners[i+1:]...)
 			return
 		}
 	}
@@ -60,12 +58,12 @@ func (mr *MultiReader) Close() {
 }
 
 func (mr *MultiReader) listen() {
-	reader := mr.channel.NewReader()
+	reader := mr.channel.GetReader().Channel()
 	for {
 		select {
 		case <-mr.close:
 			return
-		case v := <-reader.Reader():
+		case v := <-reader:
 			mr.mtx.RLock()
 			for i := range mr.listeners {
 				mr.listeners[i] <- v

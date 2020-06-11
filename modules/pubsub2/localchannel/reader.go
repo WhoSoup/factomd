@@ -5,15 +5,15 @@ import (
 )
 
 type reader struct {
-	c *channel
+	c chan interface{}
 }
 
 var _ pubsub2.IChannelReader = (*reader)(nil)
 
-func (r *reader) Reader() <-chan interface{} {
-	return r.c.channel
+func (r *reader) Channel() <-chan interface{} {
+	return r.c
 }
 func (r *reader) Read() (interface{}, bool) {
-	v, ok := <-r.c.channel
+	v, ok := <-r.c
 	return v, ok
 }

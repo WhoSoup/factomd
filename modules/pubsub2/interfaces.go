@@ -1,14 +1,14 @@
 package pubsub2
 
 type IChannel interface {
-	NewReader() IChannelReader
-	NewWriter() IChannelWriter
+	GetReader() IChannelReader
+	GetWriter() IChannelWriter
 	Close()
 	IsClosed() bool
 }
 
 type IChannelReader interface {
-	Reader() <-chan interface{}
+	Channel() <-chan interface{}
 	Read() (interface{}, bool)
 }
 type IChannelWriter interface {

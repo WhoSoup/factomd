@@ -8,9 +8,13 @@ import (
 
 type channel struct {
 	channel chan interface{}
-	close   sync.Once
-	closed  bool
-	mtx     sync.RWMutex
+
+	reader *reader
+	writer *writer
+
+	close  sync.Once
+	closed bool
+	mtx    sync.RWMutex
 }
 
 var _ pubsub2.IChannel = (*channel)(nil)
@@ -18,19 +22,20 @@ var _ pubsub2.IChannel = (*channel)(nil)
 func New(size int) *channel {
 	lc := new(channel)
 	lc.channel = make(chan interface{}, size)
+	lc.reader = new(reader)
+	lc.reader.c = lc.channel
+
+	lc.writer = new(writer)
+	lc.writer.c = lc.channel
 	return lc
 }
 
-func (c *channel) NewWriter() pubsub2.IChannelWriter {
-	w := new(writer)
-	w.c = c
-	return w
+func (c *channel) GetWriter() pubsub2.IChannelWriter {
+	return c.writer
 }
 
-func (c *channel) NewReader() pubsub2.IChannelReader {
-	r := new(reader)
-	r.c = c
-	return r
+func (c *channel) GetReader() pubsub2.IChannelReader {
+	return c.reader
 }
 
 func (c *channel) Close() {
