@@ -22,6 +22,7 @@ var _ pubsub2.IChannel = (*channel)(nil)
 func New(size int) *channel {
 	lc := new(channel)
 	lc.channel = make(chan interface{}, size)
+
 	lc.reader = new(reader)
 	lc.reader.c = lc.channel
 

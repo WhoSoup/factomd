@@ -12,12 +12,22 @@ func init() {
 }
 
 func Reset() {
-	globalRegistry = new(Registry)
+	globalRegistry = NewRegistry()
+}
+
+func GlobalRegistry() *Registry {
+	return globalRegistry
 }
 
 type Registry struct {
 	mtx   sync.RWMutex
 	paths map[string]IChannel
+}
+
+func NewRegistry() *Registry {
+	r := new(Registry)
+	r.paths = make(map[string]IChannel)
+	return r
 }
 
 func (r *Registry) Register(path string, c IChannel) error {
