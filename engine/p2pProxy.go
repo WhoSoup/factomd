@@ -151,6 +151,7 @@ func (f *P2PProxy) Receive() (interfaces.IMsg, error) {
 			case FactomMessage:
 				fmessage := data.(FactomMessage)
 				msg, err := msgsupport.UnmarshalMessage(fmessage.Message)
+				msg.SetTag("p2pproxy")
 
 				if err != nil {
 					proxyLogger.WithField("receive-error", err).Error()

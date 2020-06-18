@@ -474,6 +474,19 @@ emptyLoop:
 		default:
 			break emptyLoop
 		}
+
+		t := msg.GetTags()
+		if len(t) > 0 {
+			s := constants.MessageName(msg.Type()) + "/"
+			for i := 0; i < len(t)-1; i++ {
+				ival := t[i+1].Time.Sub(t[i].Time)
+				s += fmt.Sprintf("%d=%s/", ival.Milliseconds(), t[i].Name)
+			}
+
+			tt := time.Since(t[0].Time)
+			fmt.Printf("%s%d=%s/%d=%s\n", s, time.Since(t[len(t)-1].Time).Milliseconds(), t[len(t)-1].Name, tt.Milliseconds(), "total")
+		}
+
 		progress = s.executeMsg(msg) || progress
 	}
 	emptyLoopTime := time.Since(preEmptyLoopTime)

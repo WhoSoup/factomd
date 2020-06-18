@@ -16,6 +16,11 @@ import (
  * https://github.com/FactomProject/FactomDocs/blob/master/factomDataStructureDetails.md#factoid-transaction
  **************************/
 
+type Tag struct {
+	Name string
+	Time time.Time
+}
+
 type IMsg interface {
 	Printable
 	BinaryMarshallable
@@ -50,6 +55,9 @@ type IMsg interface {
 	// Timestamps of when we received the message locally
 	GetReceivedTime() time.Time
 	SetReceivedTime(time time.Time)
+
+	SetTag(string)
+	GetTags() []Tag
 
 	// This is the hash used to check for repeated messages.  Almost always this
 	// is the MsgHash, however for Chain Commits, Entry Commits, and Factoid Transactions,

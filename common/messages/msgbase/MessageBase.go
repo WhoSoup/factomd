@@ -42,10 +42,19 @@ type MessageBase struct {
 	MarkInvalid bool
 	Sigvalid    bool
 
+	Tags []interfaces.Tag
+
 	// The time the message was received by our node
 	// Use time.Time vs Timestamp so we don't have to deal with nils
 	// Also the code that adds this timestamp already has the time.Time
 	LocalReceived time.Time
+}
+
+func (m *MessageBase) GetTags() []interfaces.Tag {
+	return m.Tags
+}
+func (m *MessageBase) SetTag(name string) {
+	m.Tags = append(m.Tags, interfaces.Tag{Name: name, Time: time.Now()})
 }
 
 func (m *MessageBase) GetReceivedTime() time.Time {

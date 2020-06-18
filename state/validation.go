@@ -159,6 +159,7 @@ func (s *State) ValidatorLoop() {
 			s.LogMessage("InMsgQueue2", "dequeue", msg)
 		}
 
+		msg.SetTag("inmsgqueue to ackmsgqueue")
 		if t := msg.Type(); t == constants.ACK_MSG {
 			s.LogMessage("ackQueue", "enqueue ValidatorLoop", msg)
 			s.ackQueue <- msg

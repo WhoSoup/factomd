@@ -87,6 +87,7 @@ func Peers(fnode *FactomNode) {
 
 		for i := 0; i < 100 && fnode.State.APIQueue().Length() > 0; i++ {
 			msg := fnode.State.APIQueue().Dequeue()
+			msg.SetTag("de-queued from api queue")
 
 			if msg.GetRepeatHash() == nil || reflect.ValueOf(msg.GetRepeatHash()).IsNil() || msg.GetMsgHash() == nil || reflect.ValueOf(msg.GetMsgHash()).IsNil() { // Do not send pokemon messages
 				fnode.State.LogMessage("badEvents", "PokeMon seen on APIQueue", msg)
@@ -165,6 +166,7 @@ func Peers(fnode *FactomNode) {
 					// Receive is not blocking; nothing to do, we get a nil.
 					break // move to next peer
 				}
+				msg.SetTag("received ipeer")
 				msg.SetReceivedTime(preReceiveTime)
 
 				if err != nil {
@@ -304,6 +306,7 @@ func Peers(fnode *FactomNode) {
 }
 
 func sendToExecute(msg interfaces.IMsg, fnode *FactomNode, source string) {
+	msg.SetTag("sendToExecute")
 	t := msg.Type()
 	switch t {
 	case constants.MISSING_MSG:
@@ -347,12 +350,14 @@ func sendToExecute(msg interfaces.IMsg, fnode *FactomNode, source string) {
 }
 
 func Q1(fnode *FactomNode, source string, msg interfaces.IMsg) {
+	msg.SetTag("Q1")
 	fnode.State.LogMessage("NetworkInputs", source+", enqueue", msg)
 	fnode.State.LogMessage("InMsgQueue", source+", enqueue", msg)
 	fnode.State.InMsgQueue().Enqueue(msg)
 }
 
 func Q2(fnode *FactomNode, source string, msg interfaces.IMsg) {
+	msg.SetTag("Q2")
 	fnode.State.LogMessage("NetworkInputs", source+", enqueue2", msg)
 	fnode.State.LogMessage("InMsgQueue2", source+", enqueue2", msg)
 	fnode.State.InMsgQueue2().Enqueue(msg)
