@@ -451,8 +451,7 @@ func (s *State) Process() (progress bool) {
 
 	// Process inbound messages
 	preEmptyLoopTime := time.Now()
-emptyLoop:
-	for i := 0; i < 100; i++ {
+	for i := 0; len(s.prioritizedMsgQueue)+len(s.ackQueue)+len(s.msgQueue) > 0 && i < 100; i++ {
 		var msg interfaces.IMsg
 		select {
 		// We have multiple instances of a case give that channel priority because it has multiple chances to be
@@ -471,20 +470,17 @@ emptyLoop:
 			s.LogMessage("ackQueue", "Execute", msg)
 		case msg = <-s.msgQueue:
 			s.LogMessage("msgQueue", "Execute", msg)
-		default:
-			break emptyLoop
 		}
-
 		t := msg.GetTags()
 		if len(t) > 0 {
-			s := constants.MessageName(msg.Type()) + "/"
-			for i := 0; i < len(t)-1; i++ {
-				ival := t[i+1].Time.Sub(t[i].Time)
+			s := constants.MessageName(msg.Type()) + "/" + t[0].Name + "/"
+			for i := 1; i < len(t); i++ {
+				ival := t[i].Time.Sub(t[i-1].Time)
 				s += fmt.Sprintf("%d=%s/", ival.Milliseconds(), t[i].Name)
 			}
 
 			tt := time.Since(t[0].Time)
-			fmt.Printf("%s%d=%s/%d=%s\n", s, time.Since(t[len(t)-1].Time).Milliseconds(), t[len(t)-1].Name, tt.Milliseconds(), "total")
+			fmt.Printf("%s/%s%d=%s\n", time.Now().Format(time.StampMicro), s, tt.Milliseconds(), "Process()")
 		}
 
 		progress = s.executeMsg(msg) || progress
