@@ -451,8 +451,7 @@ func (s *State) Process() (progress bool) {
 
 	// Process inbound messages
 	preEmptyLoopTime := time.Now()
-emptyLoop:
-	for i := 0; i < 100; i++ {
+	for i := 0; len(s.prioritizedMsgQueue)+len(s.ackQueue)+len(s.msgQueue) > 0 && i < 100; i++ {
 		var msg interfaces.IMsg
 		select {
 		// We have multiple instances of a case give that channel priority because it has multiple chances to be
@@ -471,8 +470,6 @@ emptyLoop:
 			s.LogMessage("ackQueue", "Execute", msg)
 		case msg = <-s.msgQueue:
 			s.LogMessage("msgQueue", "Execute", msg)
-		default:
-			break emptyLoop
 		}
 		progress = s.executeMsg(msg) || progress
 	}
