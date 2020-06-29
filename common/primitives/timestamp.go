@@ -79,7 +79,7 @@ func (t *Timestamp) SetTimeSeconds(seconds int64) {
 }
 
 func (t *Timestamp) GetTime() time.Time {
-	return time.Unix(int64(*t/1000), int64(((*t)%1000)*1000))
+	return time.Unix(int64(*t/1000), int64(((*t)%1000)*1000000))
 }
 
 func (t *Timestamp) UnmarshalBinaryData(data []byte) (newData []byte, err error) {
