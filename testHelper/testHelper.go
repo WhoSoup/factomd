@@ -16,6 +16,15 @@ import (
 	"github.com/FactomProject/factomd/modules/pubsub"
 	"github.com/FactomProject/factomd/simulation"
 
+	"github.com/FactomProject/factomd/common/directoryBlock/dbInfo"
+	"github.com/FactomProject/factomd/common/entryCreditBlock"
+	"github.com/FactomProject/factomd/modules/livefeed"
+	"github.com/FactomProject/factomd/modules/pubsub"
+	"github.com/FactomProject/factomd/simulation"
+
+	"github.com/FactomProject/factomd/modules/registry"
+	"github.com/FactomProject/factomd/modules/worker"
+
 	"github.com/FactomProject/factomd/modules/registry"
 	"github.com/FactomProject/factomd/modules/worker"
 

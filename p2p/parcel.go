@@ -3,8 +3,6 @@ package p2p
 import (
 	"fmt"
 	"hash/crc32"
-
-	"github.com/FactomProject/factomd/common/interfaces"
 )
 
 var (
@@ -58,16 +56,6 @@ func newParcel(command ParcelType, payload []byte) *Parcel {
 	parcel := new(Parcel)
 	parcel.ptype = command
 	parcel.Payload = payload
-	return parcel
-}
-func NewParcelMsg(network NetworkID, payload []byte, msg interfaces.IMsg) *Parcel {
-	header := new(ParcelHeader).Init(network)
-	header.AppHash = "NetworkMessage"
-	header.AppType = "Network"
-	parcel := new(Parcel).Init(*header)
-	parcel.Payload = payload
-	parcel.msg = msg      // Keep the message for debugging
-	parcel.UpdateHeader() // Updates the header with info about payload.
 	return parcel
 }
 

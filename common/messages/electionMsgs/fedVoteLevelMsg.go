@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/FactomProject/factomd/activations"
 	"os"
 
 	"github.com/FactomProject/factomd/activations"

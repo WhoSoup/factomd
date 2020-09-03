@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/FactomProject/factomd/testHelper/simulation"
+
 	"github.com/FactomProject/factomd/common/constants"
 	"github.com/FactomProject/factomd/common/directoryBlock"
 	"github.com/FactomProject/factomd/common/messages"
@@ -22,7 +24,6 @@ import (
 	"github.com/FactomProject/factomd/common/primitives/random"
 	"github.com/FactomProject/factomd/fnode"
 	"github.com/FactomProject/factomd/state"
-	"github.com/FactomProject/factomd/testHelper/simulation"
 	"github.com/FactomProject/factomd/util/atomic"
 	"github.com/FactomProject/factomd/wsapi"
 )

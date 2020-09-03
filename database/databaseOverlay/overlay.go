@@ -14,6 +14,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/FactomProject/factomd/modules/pubsub"
+
 	"github.com/FactomProject/factomd/common/constants"
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
