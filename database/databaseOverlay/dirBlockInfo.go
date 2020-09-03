@@ -22,10 +22,6 @@ func (db *Overlay) ProcessDirBlockInfoBatch(block interfaces.IDirBlockInfo) (err
 		err = db.ProcessBlockBatchWithoutHead(DIRBLOCKINFO_UNCONFIRMED, DIRBLOCKINFO_NUMBER, DIRBLOCKINFO_SECONDARYINDEX, block)
 	}
 
-	// TODO WAX DEVELOP MERGE: event service should use module?
-	if err == nil && db.parentState != nil {
-		db.parentState.GetEventService().EmitDirectoryBlockAnchorEvent(block)
-	}
 	if err == nil && db.pubState != nil {
 		dbAnchoredEvent := &events.DBAnchored{
 			DBHeight:     block.GetDatabaseHeight(),
@@ -47,10 +43,6 @@ func (db *Overlay) ProcessDirBlockInfoMultiBatch(block interfaces.IDirBlockInfo)
 		err = db.ProcessBlockMultiBatchWithoutHead(DIRBLOCKINFO_UNCONFIRMED, DIRBLOCKINFO_NUMBER, DIRBLOCKINFO_SECONDARYINDEX, block)
 	}
 
-	// TODO WAX DEVELOP MERGE: event service should use module?
-	if err == nil && db.parentState != nil {
-		db.parentState.GetEventService().EmitDirectoryBlockAnchorEvent(block)
-	}
 	if err == nil && db.pubState != nil {
 		dbAnchoredEvent := &events.DBAnchored{
 			DBHeight:     block.GetDBHeight(),
