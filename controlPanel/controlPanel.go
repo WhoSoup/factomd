@@ -98,8 +98,17 @@ func InitTemplates() {
 	TemplateMutex.Unlock()
 }
 
+var network *p2p.Network
+var build string
+
+func ReserveControlPanel(displayStateChannel chan state.DisplayState, statePointer *state.State, connections chan map[string]p2p.PeerMetrics, nodeName string) {
+	ServeControlPanel(displayStateChannel, statePointer, connections, network, build, nodeName)
+}
+
 // Main function. This intiates appropriate variables and starts the control panel serving
 func ServeControlPanel(displayStateChannel chan state.DisplayState, statePointer *state.State, connections chan map[string]p2p.PeerMetrics, controller *p2p.Network, gitBuild string, nodeName string) {
+	network = controller
+	build = gitBuild
 	defer func() {
 		if r := recover(); r != nil {
 			// The following recover string indicates an overwrite of existing http.ListenAndServe goroutine

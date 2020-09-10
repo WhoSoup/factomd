@@ -225,27 +225,27 @@ func startWebserver(w *worker.Thread) {
 
 func startControlPanel(w *worker.Thread) {
 	state0 := fnode.Get(0).State
-	w.Run("controlpanel", func() {
-		controlPanel.ServeControlPanel(state0.ControlPanelChannel, state0, connectionMetricsChannel, network, Build, state0.FactomNodeName)
+	//w.Run("controlpanel", func() {
+	go controlPanel.ServeControlPanel(state0.ControlPanelChannel, state0, connectionMetricsChannel, network, Build, state0.FactomNodeName)
 
-		/*		controlPanelConfig := &controlpanel.Config{
-					Port:       state0.ControlPanelPort,
-					TLSEnabled: state0.FactomdTLSEnable,
-					CertFile:   state0.FactomdTLSCertFile,
-					KeyFile:    state0.FactomdTLSKeyFile,
+	/*		controlPanelConfig := &controlpanel.Config{
+				Port:       state0.ControlPanelPort,
+				TLSEnabled: state0.FactomdTLSEnable,
+				CertFile:   state0.FactomdTLSCertFile,
+				KeyFile:    state0.FactomdTLSKeyFile,
 
-					NodeName:   state0.FactomNodeName,
-					BuildNumer: Build,
-					Version:    FactomdVersion,
+				NodeName:   state0.FactomNodeName,
+				BuildNumer: Build,
+				Version:    FactomdVersion,
 
-					CompleteHeight: state0.EntryDBHeightComplete,
-					LeaderHeight:   state0.LLeaderHeight,
+				CompleteHeight: state0.EntryDBHeightComplete,
+				LeaderHeight:   state0.LLeaderHeight,
 
-					IdentityChainID: state0.GetIdentityChainID().String(),
-					PublicKey:       state0.GetServerPublicKeyString(),
-				}
-				controlpanel.New(controlPanelConfig)*/
-	})
+				IdentityChainID: state0.GetIdentityChainID().String(),
+				PublicKey:       state0.GetServerPublicKeyString(),
+			}
+			controlpanel.New(controlPanelConfig)*/
+	//})
 }
 
 func startNetwork(w *worker.Thread, p *globals.FactomParams) {
