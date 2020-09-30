@@ -23,6 +23,9 @@ import (
 
 var _ = fmt.Print
 
+// LoadThrottle is the maximum number of DBlockMessages that can be queued up at the same time
+const LoadThrottle = 32
+
 func humanizeDuration(duration time.Duration) string {
 	hours := int64(duration.Hours())
 	minutes := int64(math.Mod(duration.Minutes(), 60))
@@ -59,6 +62,11 @@ func (s *State) LoadDatabase() {
 	}
 
 	for i := int(start); i <= int(blkCnt); i++ {
+
+		if len(s.MsgQueue()) > LoadThrottle {
+			time.Sleep(time.Millisecond * 50)
+		}
+
 		if i > int(start)+500 && i%1000 == 0 {
 			seconds := time.Since(last).Seconds()
 			bps := float64(1000) / seconds
