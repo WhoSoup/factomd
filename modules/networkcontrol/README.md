@@ -52,7 +52,13 @@ A vote is for a specific proposal and counts as a single vote. Each identity in 
 
 ## Format
 
-The entries follow a specific format that must be signed by the node's block signing key.
+The entries follow a specific format that must be signed by the node's block signing key. Entries are differentiated based on ExtID[0], which contains a number corresponding to the action:
+
+| Number | Meaning |
+|---|---|
+| 0 | New Promotion |
+| 1 | New Removal |
+| 2 | Vote on proposal |
 
 ### Promote & Remove
 
@@ -61,27 +67,24 @@ The entry for promoting and removing is very similar, differing only in ExtID[4]
 |  | Data Type | Description |
 |---|---|---|
 | **ExtIDs** |   |    |
-| 0 | VarInt | The **version** of the format |
+| 0 | VarInt | The **action**, see table above |
 | 1 | VarInt | A current **unix timestamp** of when the entry was made |
 | 2 | 32 bytes | Identity chain of the server that submits this |
 | 3 | 32 bytes | The ed25519 public key of the server's block signing key |
-| 4 | enum | Either the ascii byte sequence "promote" or "demote" |
-| 5 | 32 bytes | The identity chain that should be promoted or demoted |
+| 4 | 32 bytes | The identity chain that should be promoted or demoted |
 | **Content** |   |   |
 |  | 64 bytes | The ed25519 signature over the all extids (simple concatenation of extid bytes) |
 
-The version is currently always zero. The timestamp in ExtID[1] has to be within an hour of the block it is included in. This is done to prevent replay attacks of the same proposal at a different time.
+The timestamp in ExtID[1] has to be within an hour of the block it is included in. This is done to prevent replay attacks of the same proposal at a different time.
 
 ### Vote
 
 |  | Data Type | Description |
 |---|---|---|
 | **ExtIDs** |   |    |
-| 0 | VarInt | The **version** of the format |
+| 0 | VarInt | The **action**, see table above |
 | 1 | 32 bytes | The **entry hash** of the proposal being voted for |
 | 2 | 32 bytes | Identity chain of the server that submits this |
 | 3 | 32 bytes | The ed25519 public key of the server's block signing key |
 | **Content** |   |   |
 |  | 64 bytes | The ed25519 signature over the all extids (simple concatenation of extid bytes) |
-
-The version is currently always zero.
