@@ -1032,8 +1032,9 @@ func (list *DBStateList) ProcessBlock(d *DBState) (progress bool) {
 	//
 	//list.State.AddStatus(fmt.Sprintf("PROCESSBLOCKS:  Processing Admin Block at dbht: %d", d.AdminBlock.GetDBHeight()))
 	err := d.AdminBlock.UpdateState(list.State)
-
 	s.LogPrintf("dbstateprocess", "ProcessBlock(%d) after update auth %d/%d ", dbht, len(pl.FedServers), len(pl.AuditServers))
+
+	// DECANO
 
 	if err != nil {
 		panic(err)
