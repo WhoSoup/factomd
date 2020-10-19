@@ -1035,6 +1035,8 @@ func (list *DBStateList) ProcessBlocks(d *DBState) (progress bool) {
 
 	s.LogPrintf("dbstateprocess", "ProcessBlocks(%d) after update auth %d/%d ", dbht, len(pl.FedServers), len(pl.AuditServers))
 
+	// DECANO
+
 	if err != nil {
 		panic(err)
 	}
