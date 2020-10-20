@@ -1170,10 +1170,10 @@ func (s *State) Init() {
 				}
 			}
 		}
-		correctChainHeads.FindHeads(s.DB.(*databaseOverlay.Overlay), correctChainHeads.CorrectChainHeadConfig{
-			PrintFreq: 5000,
-			Fix:       s.CheckChainHeads.Fix,
-		})
+
+		if err := chainheadfix.FindHeads(s.DB.(*databaseOverlay.Overlay), s.CheckChainHeads.Fix); err != nil {
+			panic(fmt.Errorf("chainheadfix encountered fatal error: %v\n", err))
+		}
 	}
 	if s.ExportData {
 		s.DB.SetExportData(s.ExportDataSubpath)
