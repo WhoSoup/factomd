@@ -88,3 +88,6 @@ The timestamp in ExtID[1] has to be within an hour of the block it is included i
 | 3 | 32 bytes | The ed25519 public key of the server's block signing key |
 | **Content** |   |   |
 |  | 64 bytes | The ed25519 signature over the all extids (simple concatenation of extid bytes) |
+
+## Implementation Details
+
