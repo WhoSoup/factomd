@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/FactomProject/factomd/events"
+	"github.com/FactomProject/factomd/modules/chainheadfix"
 
 	"github.com/FactomProject/factomd/common/constants/runstate"
 
@@ -42,7 +43,6 @@ import (
 	"github.com/FactomProject/factomd/wsapi"
 	"github.com/FactomProject/logrustash"
 
-	"github.com/FactomProject/factomd/Utilities/CorrectChainHeads/correctChainHeads"
 	log "github.com/sirupsen/logrus"
 )
 
