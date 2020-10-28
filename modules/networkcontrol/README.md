@@ -24,7 +24,7 @@ SkeletonKey=
 
 * `Port` specifies the port of the voting interface server. If set to 0, the server is disabled. Default = 8030.
 * `History` specifies how long proposals should be displayed in the history section of the voting interface (in factom blocks)
-* `EntryCreditKey` is the private key of EC address used to submit proposals and votes. There will be a communal EC address for this purpose.
+* `EntryCreditKey` is the private key of EC address used to submit proposals and votes. It needs to have some EC to write entries
 * `SkeletonKey` is the current network skeleton key, which can be used to sign proper messages for legacy nodes
 
 
@@ -34,13 +34,15 @@ The ANO Management chain is `888888165d185ba3342d8f0dcc331066f454196f1ad7060b00f
 
 ## Actions
 
-There are three actions: promote, remove, and vote. A proposal (promote, remove) is active starting the block it is included in and lasts for 1,000 blocks. If a proposal is started on height 12345, the last block you can vote in is 13344. The desired result is included in the next block after the passing vote. If a proposal reaches consensus with an entry that is included in block 12345, the appropriate message is included in the admin chain of block 12346.
+There are four actions: promote (to fed or to audit), remove, and vote. A proposal (promote, remove) is active starting the block it is included in and lasts for 1,000 blocks. If a proposal is started on height 12345, the last block you can vote in is 13344. The desired result is included in the next block after the passing vote. If a proposal reaches consensus with an entry that is included in block 12345, the appropriate message is included in the admin chain of block 12346.
 
 ### Promote
 
 If the identity in the proposal is **not** part of the auth set, the identity must be correctly registered with the identity registration chain and possess all the necessary attributes to run as an auth server. If the identity is not valid, the proposal is considered invalid. New servers can only be promoted to **audit** node, not directly to fed.
 
-If the identity in the proposal is already part of the auth set, this will toggle its status. A successful promotion for a federated node will make it an audit server. A successful promotion for an audit server will make it a federated node. Both of these actions will change the total number of feds the protocol has, decreasing or increasing it by one respectively.
+If a proposal is successful but the node already has the desired status (through an election), then the proposal has no effect. For example, Node A is a Fed node and a proposal is started to promote it to an audit node, but the server goes offline and is demoted via an election, the proposal does nothing if passed.
+
+A successful promotion for an audit node to a federated node or vice versa will change the total number of feds the protocol has, increase or decreasing it by one respectively.
 
 ### Remove
 
@@ -56,9 +58,10 @@ The entries follow a specific format that must be signed by the node's block sig
 
 | Number | Meaning |
 |---|---|
-| 0 | New Promotion |
-| 1 | New Removal |
-| 2 | Vote on proposal |
+| 0 | Promotion to Audit |
+| 1 | Promotion to Fed |
+| 2 | Removal from Auth Set |
+| 3 | Vote on proposal |
 
 ### Promote & Remove
 
