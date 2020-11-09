@@ -7,7 +7,8 @@ import (
 
 // The actions corresponding to ExtID[0]
 const (
-	ActionPromote = iota
+	ActionPromoteAudit = iota
+	ActionPromoteFed
 	ActionRemove
 	ActionVote
 )
