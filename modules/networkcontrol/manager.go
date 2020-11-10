@@ -1,6 +1,7 @@
 package networkcontrol
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/FactomProject/factomd/common/interfaces"
@@ -11,7 +12,7 @@ type Manager struct {
 	state interfaces.IState // temporary to figure out what is needed
 
 	// it's a slice because we're not expecting many proposals to exist simltaneously
-	proposals []proposal
+	proposals []*proposal
 }
 
 func NewManager(state interfaces.IState) *Manager {
@@ -25,7 +26,13 @@ func (m *Manager) ParseEntry(dblock interfaces.IDirectoryBlock, entry interfaces
 	action, _ := primitives.DecodeVarInt(extids[0])
 	switch action {
 	case ActionPromoteAudit:
-		m.verifyProposal(dblock.GetTimestamp(), entry)
+		if err := m.verifyProposal(dblock.GetTimestamp(), entry); err != nil {
+			// TODO log warning?
+			return
+		}
+		prop := newProposal(entry, action)
+		m.proposals = append(m.proposals, prop)
+
 	case ActionPromoteFed:
 	case ActionRemove:
 	case ActionVote:
@@ -38,6 +45,10 @@ func (m *Manager) ParseEntry(dblock interfaces.IDirectoryBlock, entry interfaces
 func (m *Manager) verifyProposal(time interfaces.Timestamp, entry interfaces.IEBEntry) error {
 	extids := entry.ExternalIDs()
 
+	if len(extids) != 5 {
+		return errors.New("invalid amount of extids")
+	}
+
 	var ts primitives.Timestamp
 	if err := ts.UnmarshalBinary(extids[1]); err != nil {
 		return err
@@ -49,12 +60,11 @@ func (m *Manager) verifyProposal(time interfaces.Timestamp, entry interfaces.IEB
 	}
 
 	var id, target primitives.Hash
-	var sig primitives.Signature
-
 	if err := id.SetBytes(extids[2]); err != nil {
 		return err
 	}
 
+	sig := new(primitives.Signature)
 	if err := sig.UnmarshalBinary(append(extids[3], entry.GetContent()...)); err != nil {
 		return err
 	}
@@ -63,33 +73,22 @@ func (m *Manager) verifyProposal(time interfaces.Timestamp, entry interfaces.IEB
 		return err
 	}
 
-	// check if part of auth set
-	var server interfaces.IServer
-
-	feds := m.state.GetFedServers(m.state.GetLLeaderHeight())
-	for _, f := range feds {
-		if f.GetChainID().IsSameAs(id.GetHash()) {
-			server = f
-			break
+	var message bytes.Buffer
+	for _, e := range extids {
+		if _, err := message.Write(e); err != nil {
+			return err
 		}
 	}
 
-	if server == nil {
-		audits := m.state.GetAuditServers(m.state.GetLLeaderHeight())
-		for _, a := range audits {
-			if a.GetChainID().IsSameAs(id.GetHash()) {
-				server = a
-				break
-			}
-		}
+	status, err := m.state.FastVerifyAuthoritySignature(message.Bytes(), sig, m.state.GetLLeaderHeight())
+	if err != nil { // invalid sig
+		return err
 	}
 
-	if server == nil {
-		return errors.New("proposal submitted by server not in auth set")
+	// audit or fed ok
+	if status < 0 {
+		return errors.New("not signed by an authority")
 	}
-
-	// todo verify pubkey
-	// todo verify sig
 
 	return nil
 }
