@@ -3,13 +3,15 @@ package networkcontrol
 import (
 	"bytes"
 	"errors"
+	"net/http"
 
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
 )
 
 type Manager struct {
-	state interfaces.IState // temporary to figure out what is needed
+	state  interfaces.IState // temporary to figure out what is needed
+	server *http.Server      // the web interface
 
 	// it's a slice because we're not expecting many proposals to exist simltaneously
 	proposals []*proposal
@@ -27,11 +29,12 @@ func (m *Manager) ParseEntry(dblock interfaces.IDirectoryBlock, entry interfaces
 	switch action {
 	case ActionPromoteAudit:
 		if err := m.verifyProposal(dblock.GetTimestamp(), entry); err != nil {
-			// TODO log warning?
+			packageLogger.WithError(err).WithField("entryhash", entry.GetHash().String()).Debug("proposal to promote to audit rejected")
 			return
 		}
 		prop := newProposal(entry, action)
 		m.proposals = append(m.proposals, prop)
+		packageLogger.WithField("entryhash", entry.GetHash().String()).Info("proposal proposal to promote to audit accepted")
 
 	case ActionPromoteFed:
 	case ActionRemove:

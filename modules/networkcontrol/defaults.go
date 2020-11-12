@@ -3,6 +3,7 @@ package networkcontrol
 import (
 	"github.com/FactomProject/factomd/common/interfaces"
 	"github.com/FactomProject/factomd/common/primitives"
+	log "github.com/sirupsen/logrus"
 )
 
 // The actions corresponding to ExtID[0]
@@ -24,6 +25,8 @@ var ChainIDBytes = []byte{0x88, 0x88, 0x88, 0x16, 0x5d, 0x18, 0x5b, 0xa3, 0x34, 
 
 // ChainIDHash is the chain all proposals and votes are submitted to
 var ChainIDHash interfaces.IHash
+
+var packageLogger = log.WithFields(log.Fields{"package": "networkcontrol"})
 
 func init() {
 	ChainIDHash = primitives.NewHash(ChainIDBytes)
