@@ -121,6 +121,11 @@ type FactomdConfig struct {
 		EventBroadcastContent    string
 		PersistentReconnect      bool
 	}
+	NetworkControl struct {
+		LaunchServer bool
+		Addrress     string
+		ECKey        string
+	}
 }
 
 // defaultConfig
@@ -254,6 +259,16 @@ EventReplayDuringStartup              = false
 EventSendStateChange                  = false
 EventBroadcastContent                 = once
 PersistentReconnect                   = false
+
+; ------------------------------------------------------------------------------
+; Configuration for the Network Control server
+; ------------------------------------------------------------------------------
+[NetworkControl]
+LaunchServer	= false
+; The interface to bind the server to. You can use "127.0.0.1:8050" to prevent outside connections
+Address			= ":8050"
+; The private key of the EC Address that pays for the entries made. Only required for authority nodes.
+NCECKey			= "Es..."
 `
 
 func (s *FactomdConfig) String() string {

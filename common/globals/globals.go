@@ -94,6 +94,11 @@ type FactomParams struct {
 	EventBroadcastContent    string
 	EventReplayDuringStartup bool
 	PersistentReconnect      bool
+
+	// Network Control parameters
+	NCLaunchServer bool
+	NCAddrress     string
+	NCECKey        string
 }
 
 /****************************************************************
